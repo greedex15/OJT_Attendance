@@ -1,0 +1,58 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: ojt_attendance_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ojt_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ojt_password}
+      POSTGRES_DB: ${POSTGRES_DB:-ojt_attendance}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ojt_user} -d ${POSTGRES_DB:-ojt_attendance}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ojt_attendance_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ojt_user}:${POSTGRES_PASSWORD:-ojt_password}@db:5432/${POSTGRES_DB:-ojt_attendance}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      SECRET_KEY: ${SECRET_KEY:-change_me_in_production_secret_key}
+      AUTH_TOKEN_EXPIRE_HOURS: ${AUTH_TOKEN_EXPIRE_HOURS:-24}
+      DEFAULT_USER_USERNAME: ${DEFAULT_USER_USERNAME:-23-0679}
+      DEFAULT_USER_PASSWORD: ${DEFAULT_USER_PASSWORD:-103013100015}
+      DEFAULT_USER_FULLNAME: ${DEFAULT_USER_FULLNAME:-OJT User (23-0679)}
+      DEFAULT_ADMIN_USERNAME: ${DEFAULT_ADMIN_USERNAME:-12-3456}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-123456789012}
+      DEFAULT_ADMIN_FULLNAME: ${DEFAULT_ADMIN_FULLNAME:-OJT Administrator}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+    container_name: ojt_attendance_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      # Set FRONTEND_PORT=80 in .env for standard HTTP deployment
+      - "${FRONTEND_PORT:-3000}:80"
+
+volumes:
+  postgres_data:

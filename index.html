@@ -1,0 +1,2270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Employee Time In / Time Out Attendance Tracker</title>
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --surface: #ffffff;
+      --surface-muted: #f8fafc;
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --text: #0f172a;
+      --text-muted: #475569;
+      --text-subtle: #64748b;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --primary-soft: #eff6ff;
+      --success: #059669;
+      --success-hover: #047857;
+      --success-soft: #ecfdf5;
+      --success-border: #a7f3d0;
+      --warning: #d97706;
+      --warning-soft: #fffbeb;
+      --danger: #dc2626;
+      --danger-hover: #b91c1c;
+      --danger-soft: #fef2f2;
+      --neutral-soft: #f1f5f9;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+      --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+      --shadow-lg: 0 12px 28px rgba(15, 23, 42, 0.14);
+      --radius: 10px;
+      --radius-sm: 6px;
+      --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, input, select {
+      font-family: inherit;
+      font-size: inherit;
+    }
+
+    .app-shell {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 24px 20px 56px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* Header */
+    .app-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 22px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      background: var(--primary);
+      color: #ffffff;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text);
+    }
+
+    .brand p {
+      margin: 2px 0 0;
+      font-size: 0.85rem;
+      color: var(--text-subtle);
+    }
+
+    .header-right {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .live-clock {
+      text-align: right;
+      padding: 6px 14px;
+      background: var(--surface-muted);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .live-clock-time {
+      font-family: var(--font-mono);
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.2;
+    }
+
+    .live-clock-date {
+      font-size: 0.78rem;
+      color: var(--text-subtle);
+    }
+
+    .toolbar-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 8px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      font-weight: 600;
+      font-size: 0.86rem;
+      cursor: pointer;
+      transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.08s ease;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #ffffff;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: var(--primary-hover);
+    }
+
+    .btn-success {
+      background: var(--success);
+      color: #ffffff;
+    }
+    .btn-success:hover:not(:disabled) {
+      background: var(--success-hover);
+    }
+
+    .btn-warning {
+      background: var(--warning);
+      color: #ffffff;
+    }
+    .btn-warning:hover:not(:disabled) {
+      background: #b45309;
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: #ffffff;
+    }
+    .btn-danger:hover:not(:disabled) {
+      background: var(--danger-hover);
+    }
+
+    .btn-outline {
+      background: var(--surface);
+      color: var(--text);
+      border-color: var(--border-strong);
+    }
+    .btn-outline:hover:not(:disabled) {
+      background: var(--surface-muted);
+      border-color: #94a3b8;
+    }
+
+    .btn-ghost-danger {
+      background: transparent;
+      color: var(--danger);
+      border-color: #fecaca;
+    }
+    .btn-ghost-danger:hover:not(:disabled) {
+      background: var(--danger-soft);
+    }
+
+    .btn-sm {
+      padding: 5px 10px;
+      font-size: 0.8rem;
+      gap: 5px;
+    }
+    .btn-sm svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .stat-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-subtle);
+    }
+
+    .stat-value {
+      font-size: 1.55rem;
+      font-weight: 700;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
+    }
+
+    .stat-value.success {
+      color: var(--success);
+    }
+
+    .stat-sub {
+      font-size: 0.78rem;
+      color: var(--text-subtle);
+    }
+
+    /* Card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 15px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: var(--surface);
+    }
+
+    .card-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-body {
+      padding: 20px;
+    }
+
+    /* Quick Clock-In / Clock-Out Panel */
+    .quick-form {
+      display: grid;
+      grid-template-columns: 1fr 1.4fr auto;
+      gap: 14px;
+      align-items: end;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .field label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .input {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+    }
+
+    .input-sm {
+      padding: 5px 8px;
+      font-size: 0.82rem;
+    }
+
+    .quick-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .quick-hint {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      background: var(--surface-muted);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 0.83rem;
+      color: var(--text-muted);
+    }
+
+    .active-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .active-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: var(--success-soft);
+      border: 1px solid var(--success-border);
+      color: var(--success-hover);
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+    }
+
+    .active-pill:hover {
+      background: #d1fae5;
+    }
+
+    /* Manual Entry Drawer */
+    .manual-drawer {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px dashed var(--border-strong);
+      display: none;
+    }
+
+    .manual-drawer.open {
+      display: block;
+    }
+
+    .manual-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    /* Filter Bar */
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 20px;
+      background: var(--surface-muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .filter-search {
+      flex: 1 1 220px;
+      min-width: 180px;
+    }
+
+    .filter-control {
+      width: auto;
+      min-width: 145px;
+    }
+
+    /* Table */
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    thead th {
+      padding: 11px 14px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-subtle);
+      background: var(--surface-muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    tbody td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      color: var(--text);
+    }
+
+    tbody tr:hover {
+      background: #f8fafc;
+    }
+
+    tbody tr.row-editing {
+      background: var(--primary-soft);
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .mono {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+    }
+
+    .emp-id-chip {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--neutral-soft);
+      border: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .emp-name {
+      font-weight: 600;
+    }
+
+    /* Status Badges */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+    }
+
+    .status-in {
+      background: var(--success-soft);
+      color: var(--success-hover);
+      border: 1px solid var(--success-border);
+    }
+
+    .status-in .status-dot {
+      background: var(--success);
+      box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.2);
+      animation: pulse 1.8s infinite;
+    }
+
+    .status-out {
+      background: var(--neutral-soft);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    .status-out .status-dot {
+      background: #94a3b8;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.45; }
+    }
+
+    .row-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: nowrap;
+    }
+
+    .empty-state {
+      padding: 46px 20px;
+      text-align: center;
+      color: var(--text-subtle);
+    }
+
+    .empty-state strong {
+      display: block;
+      font-size: 0.98rem;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    /* Table Footer */
+    .table-footer {
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--surface-muted);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 0.82rem;
+      color: var(--text-subtle);
+    }
+
+    /* Toasts */
+    .toast-stack {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 360px;
+      width: calc(100vw - 40px);
+      pointer-events: none;
+    }
+
+    .toast {
+      pointer-events: auto;
+      background: #0f172a;
+      color: #ffffff;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 0.86rem;
+      border-left: 4px solid var(--primary);
+      animation: slideIn 0.2s ease-out;
+    }
+
+    .toast.success { border-left-color: var(--success); }
+    .toast.warning { border-left-color: var(--warning); }
+    .toast.error { border-left-color: var(--danger); }
+
+    .toast-action {
+      background: rgba(255, 255, 255, 0.16);
+      color: #ffffff;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 9px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .toast-action:hover {
+      background: rgba(255, 255, 255, 0.26);
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 900;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
+      max-width: 460px;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-header h3 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .modal-body {
+      padding: 18px 20px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .modal-footer {
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--surface-muted);
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .radio-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .radio-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+
+    .radio-option:hover {
+      background: var(--surface-muted);
+    }
+
+    .radio-option strong {
+      display: block;
+      color: var(--text);
+      font-size: 0.88rem;
+    }
+
+    .radio-option span {
+      font-size: 0.8rem;
+      color: var(--text-subtle);
+    }
+
+    /* Print Header (hidden on screen) */
+    .print-only-header {
+      display: none;
+    }
+
+    /* Responsive */
+    @media (max-width: 960px) {
+      .stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .quick-form {
+        grid-template-columns: 1fr 1fr;
+      }
+      .quick-buttons {
+        grid-column: 1 / -1;
+      }
+      .manual-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 600px) {
+      .app-shell {
+        padding: 14px 12px 48px;
+      }
+      .stats-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+      .quick-form,
+      .manual-grid {
+        grid-template-columns: 1fr;
+      }
+      .live-clock {
+        text-align: left;
+      }
+    }
+
+    /* Print / PDF Styles */
+    @media print {
+      @page {
+        size: landscape;
+        margin: 14mm;
+      }
+
+      body {
+        background: #ffffff !important;
+        color: #000000 !important;
+        font-size: 11px;
+      }
+
+      .app-shell {
+        max-width: none;
+        padding: 0;
+        gap: 12px;
+      }
+
+      .no-print,
+      .app-header .toolbar-actions,
+      .quick-panel,
+      .filter-bar,
+      .col-actions,
+      .toast-stack,
+      .modal-backdrop {
+        display: none !important;
+      }
+
+      .print-only-header {
+        display: flex !important;
+        justify-content: space-between;
+        align-items: flex-end;
+        border-bottom: 2px solid #0f172a;
+        padding-bottom: 10px;
+        margin-bottom: 6px;
+      }
+
+      .print-only-header h2 {
+        margin: 0 0 2px;
+        font-size: 16px;
+        color: #000000;
+      }
+
+      .print-only-meta {
+        text-align: right;
+        font-size: 10px;
+        color: #334155;
+      }
+
+      .app-header,
+      .card,
+      .stat-card {
+        box-shadow: none !important;
+        border-color: #cbd5e1 !important;
+      }
+
+      .app-header {
+        display: none !important;
+      }
+
+      .stats-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+      }
+
+      .stat-card {
+        padding: 8px 10px;
+      }
+
+      .stat-value {
+        font-size: 15px;
+      }
+
+      thead th {
+        background: #f1f5f9 !important;
+        color: #0f172a !important;
+        border-bottom: 1.5px solid #475569 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      tbody tr {
+        break-inside: avoid;
+      }
+
+      tbody td {
+        padding: 7px 10px;
+        border-bottom: 1px solid #cbd5e1 !important;
+      }
+
+      .status-badge {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Print-only Report Header -->
+    <div class="print-only-header">
+      <div>
+        <h2>Employee Attendance Log Report</h2>
+        <div id="printFilterSummary">All attendance records</div>
+      </div>
+      <div class="print-only-meta">
+        <div>Generated: <strong id="printGeneratedAt"></strong></div>
+        <div>Total Records Shown: <strong id="printRecordCount">0</strong></div>
+      </div>
+    </div>
+
+    <!-- App Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
+            <circle cx="12" cy="12" r="9"></circle>
+            <polyline points="12 7 12 12 15.5 14"></polyline>
+          </svg>
+        </div>
+        <div>
+          <h1>Employee Attendance Tracker</h1>
+          <p>Quick Time In / Time Out logging with local persistence &amp; exports</p>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <div class="live-clock" aria-live="off">
+          <div class="live-clock-time" id="liveClockTime">--:--:--</div>
+          <div class="live-clock-date" id="liveClockDate">Loading date...</div>
+        </div>
+
+        <div class="toolbar-actions no-print">
+          <button type="button" class="btn btn-outline" id="btnExportCsv" title="Download attendance logs as CSV">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="12" y1="18" x2="12" y2="12"></line>
+              <polyline points="9 15 12 18 15 15"></polyline>
+            </svg>
+            Export CSV
+          </button>
+
+          <button type="button" class="btn btn-outline" id="btnPrintPdf" title="Print report or save as PDF">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 6 2 18 2 18 9"></polyline>
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+              <rect x="6" y="14" width="12" height="8"></rect>
+            </svg>
+            Print / PDF
+          </button>
+
+          <button type="button" class="btn btn-outline" id="btnExportJson" title="Download JSON backup">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Backup JSON
+          </button>
+
+          <button type="button" class="btn btn-outline" id="btnImportJson" title="Restore from JSON backup">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            Restore JSON
+          </button>
+          <input type="file" id="jsonFileInput" accept=".json,application/json" hidden />
+        </div>
+      </div>
+    </header>
+
+    <!-- KPI Summary Cards -->
+    <section class="stats-grid" aria-label="Attendance summary">
+      <div class="stat-card">
+        <span class="stat-label">Total Logs</span>
+        <span class="stat-value" id="statTotalLogs">0</span>
+        <span class="stat-sub" id="statTotalSub">0 unique employees</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Currently Clocked In</span>
+        <span class="stat-value success" id="statClockedIn">0</span>
+        <span class="stat-sub">Active shifts in progress</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Clocked Out</span>
+        <span class="stat-value" id="statClockedOut">0</span>
+        <span class="stat-sub">Completed entries</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Total Hours Logged</span>
+        <span class="stat-value" id="statTotalHours">0h 00m</span>
+        <span class="stat-sub" id="statHoursSub">Across completed shifts</span>
+      </div>
+    </section>
+
+    <!-- Quick Clock-In / Clock-Out Card -->
+    <section class="card quick-panel no-print" aria-label="Quick Clock In and Out">
+      <div class="card-header">
+        <h2 class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="8.5" cy="7" r="4"></circle>
+            <polyline points="17 11 19 13 23 9"></polyline>
+          </svg>
+          Quick Clock-In / Clock-Out
+        </h2>
+        <button type="button" class="btn btn-outline btn-sm" id="btnToggleManual">
+          + Manual Entry
+        </button>
+      </div>
+
+      <div class="card-body">
+        <form id="quickClockForm" class="quick-form" autocomplete="off">
+          <div class="field">
+            <label for="quickEmpId">Employee ID</label>
+            <input
+              type="text"
+              id="quickEmpId"
+              class="input"
+              placeholder="e.g. EMP-101"
+              list="knownEmployeeIds"
+              required
+            />
+            <datalist id="knownEmployeeIds"></datalist>
+          </div>
+
+          <div class="field">
+            <label for="quickEmpName">Employee Name</label>
+            <input
+              type="text"
+              id="quickEmpName"
+              class="input"
+              placeholder="e.g. Jane Doe"
+              list="knownEmployeeNames"
+            />
+            <datalist id="knownEmployeeNames"></datalist>
+          </div>
+
+          <div class="quick-buttons">
+            <button type="button" class="btn btn-success" id="btnClockIn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                <polyline points="10 17 15 12 10 7"></polyline>
+                <line x1="15" y1="12" x2="3" y2="12"></line>
+              </svg>
+              Clock In
+            </button>
+            <button type="button" class="btn btn-warning" id="btnClockOut">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
+              Clock Out
+            </button>
+          </div>
+        </form>
+
+        <div class="quick-hint" id="activeEmployeesBar">
+          <span><strong>Active now:</strong> <span id="activeSummaryText">No employees currently clocked in.</span></span>
+          <div class="active-pills" id="activePills"></div>
+        </div>
+
+        <!-- Expandable Manual Entry Form -->
+        <div class="manual-drawer" id="manualDrawer">
+          <form id="manualEntryForm" class="manual-grid" autocomplete="off">
+            <div class="field">
+              <label for="manualEmpId">Employee ID</label>
+              <input type="text" id="manualEmpId" class="input input-sm" placeholder="EMP-102" required />
+            </div>
+            <div class="field">
+              <label for="manualEmpName">Name</label>
+              <input type="text" id="manualEmpName" class="input input-sm" placeholder="Full Name" required />
+            </div>
+            <div class="field">
+              <label for="manualDate">Date</label>
+              <input type="date" id="manualDate" class="input input-sm" required />
+            </div>
+            <div class="field">
+              <label for="manualTimeIn">Time In</label>
+              <input type="time" step="1" id="manualTimeIn" class="input input-sm" required />
+            </div>
+            <div class="field">
+              <label for="manualTimeOut">Time Out (optional)</label>
+              <input type="time" step="1" id="manualTimeOut" class="input input-sm" />
+            </div>
+            <div class="quick-buttons">
+              <button type="submit" class="btn btn-primary btn-sm">Add Entry</button>
+              <button type="button" class="btn btn-outline btn-sm" id="btnCancelManual">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- Attendance Logs Table Card -->
+    <section class="card" aria-label="Attendance Logs">
+      <div class="card-header">
+        <h2 class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+          Attendance Logs
+        </h2>
+
+        <div class="toolbar-actions no-print">
+          <button type="button" class="btn btn-ghost-danger btn-sm" id="btnClearAll">
+            Clear All Data
+          </button>
+        </div>
+      </div>
+
+      <!-- Search & Filter Bar -->
+      <div class="filter-bar no-print">
+        <input
+          type="search"
+          id="filterSearch"
+          class="input input-sm filter-search"
+          placeholder="Search by Employee ID or Name..."
+          aria-label="Search by Employee ID or Name"
+        />
+        <select id="filterStatus" class="input input-sm filter-control" aria-label="Filter by status">
+          <option value="all">All Statuses</option>
+          <option value="in">Clocked In</option>
+          <option value="out">Clocked Out</option>
+        </select>
+        <input
+          type="date"
+          id="filterDate"
+          class="input input-sm filter-control"
+          aria-label="Filter by date"
+          title="Filter by date"
+        />
+        <button type="button" class="btn btn-outline btn-sm" id="btnResetFilters">
+          Reset Filters
+        </button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Employee ID</th>
+              <th>Name</th>
+              <th>Date</th>
+              <th>Time In</th>
+              <th>Time Out</th>
+              <th>Duration</th>
+              <th>Status</th>
+              <th class="col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="attendanceTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <span id="tableCountInfo">Showing 0 of 0 records</span>
+        <span>Tip: Click <strong>Edit</strong> on any row to modify timestamps inline. Leave Time Out blank to mark as Clocked In.</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Import JSON Modal -->
+  <div class="modal-backdrop" id="importModal" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="importModalTitle">Restore JSON Backup</h3>
+        <button type="button" class="btn btn-outline btn-sm" id="btnCloseImportModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="importSummaryText" style="margin: 0;">Ready to import records.</p>
+        <div class="radio-stack">
+          <label class="radio-option">
+            <input type="radio" name="importMode" value="merge" checked />
+            <div>
+              <strong>Merge with existing logs</strong>
+              <span>Adds new records from the backup and preserves current logs.</span>
+            </div>
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="importMode" value="replace" />
+            <div>
+              <strong>Replace all existing logs</strong>
+              <span>Overwrites current localStorage data with this backup file.</span>
+            </div>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline btn-sm" id="btnCancelImport">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="btnConfirmImport">Import Records</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Clear All Modal -->
+  <div class="modal-backdrop" id="clearModal" role="dialog" aria-modal="true" aria-labelledby="clearModalTitle">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="clearModalTitle">Clear All Attendance Logs?</h3>
+        <button type="button" class="btn btn-outline btn-sm" id="btnCloseClearModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin: 0;">
+          This will permanently remove all <strong id="clearRecordCount">0</strong> attendance records from browser storage.
+          Consider exporting a CSV or JSON backup first.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline btn-sm" id="btnCancelClear">Cancel</button>
+        <button type="button" class="btn btn-danger btn-sm" id="btnConfirmClear">Yes, Clear All</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const STORAGE_KEY = "ojt_attendance_tracker_v1";
+      const BACKUP_APP_ID = "ojt-attendance-tracker";
+      const BACKUP_VERSION = 1;
+
+      /* =========================================================
+       * Utilities: IDs, Dates, Time Formatting & Duration Math
+       * ========================================================= */
+      const TimeUtils = {
+        pad(n) {
+          return String(n).padStart(2, "0");
+        },
+
+        todayIso(dateObj = new Date()) {
+          return `${dateObj.getFullYear()}-${this.pad(dateObj.getMonth() + 1)}-${this.pad(dateObj.getDate())}`;
+        },
+
+        nowTime24(dateObj = new Date()) {
+          return `${this.pad(dateObj.getHours())}:${this.pad(dateObj.getMinutes())}:${this.pad(dateObj.getSeconds())}`;
+        },
+
+        formatLiveDate(dateObj = new Date()) {
+          return dateObj.toLocaleDateString(undefined, {
+            weekday: "short",
+            year: "numeric",
+            month: "short",
+            day: "numeric"
+          });
+        },
+
+        formatLiveTime(dateObj = new Date()) {
+          return dateObj.toLocaleTimeString(undefined, {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit"
+          });
+        },
+
+        normalizeTimeStr(timeStr) {
+          if (!timeStr || typeof timeStr !== "string") return "";
+          const trimmed = timeStr.trim();
+          const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(trimmed);
+          if (!match) return "";
+          const h = Number(match[1]);
+          const m = Number(match[2]);
+          const s = match[3] !== undefined ? Number(match[3]) : 0;
+          if (h < 0 || h > 23 || m < 0 || m > 59 || s < 0 || s > 59) return "";
+          return `${this.pad(h)}:${this.pad(m)}:${this.pad(s)}`;
+        },
+
+        timeToSeconds(timeStr) {
+          const norm = this.normalizeTimeStr(timeStr);
+          if (!norm) return null;
+          const [h, m, s] = norm.split(":").map(Number);
+          return h * 3600 + m * 60 + s;
+        },
+
+        formatTimeDisplay(timeStr) {
+          const norm = this.normalizeTimeStr(timeStr);
+          if (!norm) return "—";
+          const [h, m, s] = norm.split(":").map(Number);
+          const d = new Date(2000, 0, 1, h, m, s);
+          return d.toLocaleTimeString(undefined, {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit"
+          });
+        },
+
+        computeDurationSeconds(dateStr, timeInStr, timeOutStr) {
+          const inSec = this.timeToSeconds(timeInStr);
+          if (inSec === null) return null;
+
+          if (!timeOutStr) {
+            // Live elapsed time for clocked-in entries
+            const start = this.buildLocalDate(dateStr, timeInStr);
+            if (!start) return null;
+            const diff = Math.floor((Date.now() - start.getTime()) / 1000);
+            return Math.max(0, diff);
+          }
+
+          const outSec = this.timeToSeconds(timeOutStr);
+          if (outSec === null) return null;
+
+          // Support overnight shifts if Time Out is earlier than Time In
+          return outSec >= inSec ? outSec - inSec : 86400 - inSec + outSec;
+        },
+
+        buildLocalDate(dateStr, timeStr) {
+          if (!dateStr || !timeStr) return null;
+          const dMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+          const normTime = this.normalizeTimeStr(timeStr);
+          if (!dMatch || !normTime) return null;
+          const [h, m, s] = normTime.split(":").map(Number);
+          return new Date(Number(dMatch[1]), Number(dMatch[2]) - 1, Number(dMatch[3]), h, m, s);
+        },
+
+        formatDuration(totalSeconds, isActive = false) {
+          if (totalSeconds === null || totalSeconds < 0 || Number.isNaN(totalSeconds)) {
+            return "—";
+          }
+          const hours = Math.floor(totalSeconds / 3600);
+          const minutes = Math.floor((totalSeconds % 3600) / 60);
+          const seconds = totalSeconds % 60;
+
+          let text;
+          if (hours > 0) {
+            text = `${hours}h ${this.pad(minutes)}m`;
+          } else if (minutes > 0) {
+            text = `${minutes}m ${this.pad(seconds)}s`;
+          } else {
+            text = `${seconds}s`;
+          }
+          return isActive ? `${text} (live)` : text;
+        },
+
+        formatHoursSummary(totalSeconds) {
+          const safe = Math.max(0, Math.floor(totalSeconds || 0));
+          const hours = Math.floor(safe / 3600);
+          const minutes = Math.floor((safe % 3600) / 60);
+          return `${hours}h ${this.pad(minutes)}m`;
+        },
+
+        generateId() {
+          if (window.crypto && typeof window.crypto.randomUUID === "function") {
+            return window.crypto.randomUUID();
+          }
+          return `rec_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+        }
+      };
+
+      /* =========================================================
+       * Storage Service (localStorage)
+       * ========================================================= */
+      const StorageService = {
+        load() {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return [];
+            return parsed.map(this.sanitizeRecord).filter(Boolean);
+          } catch (err) {
+            console.error("Failed to read attendance data from localStorage:", err);
+            return [];
+          }
+        },
+
+        save(records) {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+            return true;
+          } catch (err) {
+            console.error("Failed to save attendance data to localStorage:", err);
+            return false;
+          }
+        },
+
+        sanitizeRecord(raw) {
+          if (!raw || typeof raw !== "object") return null;
+          const empId = String(raw.empId ?? "").trim();
+          const name = String(raw.name ?? "").trim();
+          const date = String(raw.date ?? "").trim();
+          const timeIn = TimeUtils.normalizeTimeStr(String(raw.timeIn ?? ""));
+          const timeOut = raw.timeOut ? TimeUtils.normalizeTimeStr(String(raw.timeOut)) : "";
+          if (!empId || !name || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !timeIn) {
+            return null;
+          }
+          return {
+            id: String(raw.id || TimeUtils.generateId()),
+            empId,
+            name,
+            date,
+            timeIn,
+            timeOut,
+            createdAt: Number(raw.createdAt) || Date.now(),
+            updatedAt: Number(raw.updatedAt) || Date.now()
+          };
+        }
+      };
+
+      /* =========================================================
+       * File Export / Backup Helpers
+       * ========================================================= */
+      const FileExporter = {
+        triggerDownload(filename, content, mimeType) {
+          const blob = new Blob([content], { type: mimeType });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        },
+
+        csvEscape(value) {
+          const str = String(value ?? "");
+          if (/[",\r\n]/.test(str)) {
+            return `"${str.replace(/"/g, '""')}"`;
+          }
+          return str;
+        },
+
+        exportCsv(records) {
+          const headers = ["Employee ID", "Name", "Date", "Time In", "Time Out", "Duration", "Status"];
+          const rows = records.map((rec) => {
+            const isActive = !rec.timeOut;
+            const durSec = TimeUtils.computeDurationSeconds(rec.date, rec.timeIn, rec.timeOut);
+            const durText = TimeUtils.formatDuration(durSec, false);
+            const status = isActive ? "Clocked In" : "Clocked Out";
+            return [
+              rec.empId,
+              rec.name,
+              rec.date,
+              rec.timeIn,
+              rec.timeOut || "",
+              isActive ? `${durText} (In Progress)` : durText,
+              status
+            ].map(this.csvEscape).join(",");
+          });
+
+          // Prepend UTF-8 BOM for clean Excel compatibility
+          const csvContent = "\uFEFF" + [headers.map(this.csvEscape).join(","), ...rows].join("\r\n");
+          const stamp = TimeUtils.todayIso();
+          this.triggerDownload(`attendance-logs-${stamp}.csv`, csvContent, "text/csv;charset=utf-8;");
+        },
+
+        exportJson(records) {
+          const payload = {
+            app: BACKUP_APP_ID,
+            version: BACKUP_VERSION,
+            exportedAt: new Date().toISOString(),
+            recordCount: records.length,
+            records
+          };
+          const stamp = TimeUtils.todayIso();
+          this.triggerDownload(
+            `attendance-backup-${stamp}.json`,
+            JSON.stringify(payload, null, 2),
+            "application/json;charset=utf-8;"
+          );
+        }
+      };
+
+      /* =========================================================
+       * Application State & DOM Controller
+       * ========================================================= */
+      const state = {
+        records: StorageService.load(),
+        editingId: null,
+        pendingImportRecords: null,
+        filters: {
+          search: "",
+          status: "all",
+          date: ""
+        }
+      };
+
+      const dom = {
+        liveClockTime: document.getElementById("liveClockTime"),
+        liveClockDate: document.getElementById("liveClockDate"),
+
+        statTotalLogs: document.getElementById("statTotalLogs"),
+        statTotalSub: document.getElementById("statTotalSub"),
+        statClockedIn: document.getElementById("statClockedIn"),
+        statClockedOut: document.getElementById("statClockedOut"),
+        statTotalHours: document.getElementById("statTotalHours"),
+        statHoursSub: document.getElementById("statHoursSub"),
+
+        quickClockForm: document.getElementById("quickClockForm"),
+        quickEmpId: document.getElementById("quickEmpId"),
+        quickEmpName: document.getElementById("quickEmpName"),
+        knownEmployeeIds: document.getElementById("knownEmployeeIds"),
+        knownEmployeeNames: document.getElementById("knownEmployeeNames"),
+        btnClockIn: document.getElementById("btnClockIn"),
+        btnClockOut: document.getElementById("btnClockOut"),
+
+        activeSummaryText: document.getElementById("activeSummaryText"),
+        activePills: document.getElementById("activePills"),
+
+        btnToggleManual: document.getElementById("btnToggleManual"),
+        manualDrawer: document.getElementById("manualDrawer"),
+        manualEntryForm: document.getElementById("manualEntryForm"),
+        manualEmpId: document.getElementById("manualEmpId"),
+        manualEmpName: document.getElementById("manualEmpName"),
+        manualDate: document.getElementById("manualDate"),
+        manualTimeIn: document.getElementById("manualTimeIn"),
+        manualTimeOut: document.getElementById("manualTimeOut"),
+        btnCancelManual: document.getElementById("btnCancelManual"),
+
+        filterSearch: document.getElementById("filterSearch"),
+        filterStatus: document.getElementById("filterStatus"),
+        filterDate: document.getElementById("filterDate"),
+        btnResetFilters: document.getElementById("btnResetFilters"),
+
+        tableBody: document.getElementById("attendanceTableBody"),
+        tableCountInfo: document.getElementById("tableCountInfo"),
+
+        btnExportCsv: document.getElementById("btnExportCsv"),
+        btnPrintPdf: document.getElementById("btnPrintPdf"),
+        btnExportJson: document.getElementById("btnExportJson"),
+        btnImportJson: document.getElementById("btnImportJson"),
+        jsonFileInput: document.getElementById("jsonFileInput"),
+        btnClearAll: document.getElementById("btnClearAll"),
+
+        printFilterSummary: document.getElementById("printFilterSummary"),
+        printGeneratedAt: document.getElementById("printGeneratedAt"),
+        printRecordCount: document.getElementById("printRecordCount"),
+
+        toastStack: document.getElementById("toastStack"),
+
+        importModal: document.getElementById("importModal"),
+        importSummaryText: document.getElementById("importSummaryText"),
+        btnCloseImportModal: document.getElementById("btnCloseImportModal"),
+        btnCancelImport: document.getElementById("btnCancelImport"),
+        btnConfirmImport: document.getElementById("btnConfirmImport"),
+
+        clearModal: document.getElementById("clearModal"),
+        clearRecordCount: document.getElementById("clearRecordCount"),
+        btnCloseClearModal: document.getElementById("btnCloseClearModal"),
+        btnCancelClear: document.getElementById("btnCancelClear"),
+        btnConfirmClear: document.getElementById("btnConfirmClear")
+      };
+
+      function escapeHtml(str) {
+        return String(str ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      /* =========================================================
+       * Toast Notifications (with optional Undo action)
+       * ========================================================= */
+      function showToast(message, type = "info", action = null) {
+        const toast = document.createElement("div");
+        toast.className = `toast ${type}`;
+
+        const textSpan = document.createElement("span");
+        textSpan.textContent = message;
+        toast.appendChild(textSpan);
+
+        let timeoutId;
+        const removeToast = () => {
+          clearTimeout(timeoutId);
+          if (toast.parentNode) toast.parentNode.removeChild(toast);
+        };
+
+        if (action && typeof action.onClick === "function") {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "toast-action";
+          btn.textContent = action.label || "Undo";
+          btn.addEventListener("click", () => {
+            action.onClick();
+            removeToast();
+          });
+          toast.appendChild(btn);
+        }
+
+        dom.toastStack.appendChild(toast);
+        timeoutId = setTimeout(removeToast, action ? 6000 : 3500);
+      }
+
+      /* =========================================================
+       * Data Queries & Mutations
+       * ========================================================= */
+      function persistAndRender() {
+        const ok = StorageService.save(state.records);
+        if (!ok) {
+          showToast("Warning: Could not persist changes to browser storage.", "error");
+        }
+        render();
+      }
+
+      function getSortedRecords(records) {
+        return [...records].sort((a, b) => {
+          // Active clocked-in entries first, then newest date/time first
+          const aActive = !a.timeOut ? 1 : 0;
+          const bActive = !b.timeOut ? 1 : 0;
+          if (aActive !== bActive) return bActive - aActive;
+
+          const dateCmp = b.date.localeCompare(a.date);
+          if (dateCmp !== 0) return dateCmp;
+
+          const timeCmp = b.timeIn.localeCompare(a.timeIn);
+          if (timeCmp !== 0) return timeCmp;
+
+          return (b.createdAt || 0) - (a.createdAt || 0);
+        });
+      }
+
+      function getFilteredRecords() {
+        const q = state.filters.search.trim().toLowerCase();
+        const status = state.filters.status;
+        const date = state.filters.date;
+
+        const filtered = state.records.filter((rec) => {
+          if (q) {
+            const matchId = rec.empId.toLowerCase().includes(q);
+            const matchName = rec.name.toLowerCase().includes(q);
+            if (!matchId && !matchName) return false;
+          }
+          if (status === "in" && rec.timeOut) return false;
+          if (status === "out" && !rec.timeOut) return false;
+          if (date && rec.date !== date) return false;
+          return true;
+        });
+
+        return getSortedRecords(filtered);
+      }
+
+      function findActiveByEmpId(empId) {
+        const norm = empId.trim().toLowerCase();
+        if (!norm) return null;
+        return state.records.find((r) => r.empId.toLowerCase() === norm && !r.timeOut) || null;
+      }
+
+      function findKnownEmployeeName(empId) {
+        const norm = empId.trim().toLowerCase();
+        if (!norm) return "";
+        const match = [...state.records]
+          .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+          .find((r) => r.empId.toLowerCase() === norm);
+        return match ? match.name : "";
+      }
+
+      function handleClockIn() {
+        const empId = dom.quickEmpId.value.trim();
+        let name = dom.quickEmpName.value.trim();
+
+        if (!empId) {
+          showToast("Please enter an Employee ID to clock in.", "warning");
+          dom.quickEmpId.focus();
+          return;
+        }
+
+        const existingActive = findActiveByEmpId(empId);
+        if (existingActive) {
+          showToast(`${existingActive.name} (${existingActive.empId}) is already clocked in.`, "warning");
+          return;
+        }
+
+        if (!name) {
+          name = findKnownEmployeeName(empId);
+        }
+
+        if (!name) {
+          showToast("Please enter the Employee Name to clock in.", "warning");
+          dom.quickEmpName.focus();
+          return;
+        }
+
+        const now = new Date();
+        const record = {
+          id: TimeUtils.generateId(),
+          empId,
+          name,
+          date: TimeUtils.todayIso(now),
+          timeIn: TimeUtils.nowTime24(now),
+          timeOut: "",
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        };
+
+        state.records.unshift(record);
+        dom.quickEmpId.value = "";
+        dom.quickEmpName.value = "";
+        persistAndRender();
+        showToast(`${record.name} (${record.empId}) clocked in at ${TimeUtils.formatTimeDisplay(record.timeIn)}.`, "success");
+      }
+
+      function clockOutRecord(record) {
+        if (!record || record.timeOut) return;
+        const now = new Date();
+        record.timeOut = TimeUtils.nowTime24(now);
+        record.updatedAt = Date.now();
+        if (state.editingId === record.id) {
+          state.editingId = null;
+        }
+        persistAndRender();
+        const durSec = TimeUtils.computeDurationSeconds(record.date, record.timeIn, record.timeOut);
+        showToast(
+          `${record.name} clocked out (${TimeUtils.formatDuration(durSec)}).`,
+          "success"
+        );
+      }
+
+      function handleQuickClockOut() {
+        const empId = dom.quickEmpId.value.trim();
+        const nameQuery = dom.quickEmpName.value.trim().toLowerCase();
+
+        let target = null;
+        if (empId) {
+          target = findActiveByEmpId(empId);
+          if (!target) {
+            showToast(`No active clock-in found for Employee ID "${empId}".`, "warning");
+            return;
+          }
+        } else if (nameQuery) {
+          const matches = state.records.filter(
+            (r) => !r.timeOut && r.name.toLowerCase() === nameQuery
+          );
+          if (matches.length === 1) {
+            target = matches[0];
+          } else if (matches.length > 1) {
+            showToast("Multiple active employees share that name. Enter Employee ID.", "warning");
+            dom.quickEmpId.focus();
+            return;
+          } else {
+            showToast(`No active clock-in found for "${dom.quickEmpName.value.trim()}".`, "warning");
+            return;
+          }
+        } else {
+          showToast("Enter an Employee ID (or click an active pill) to clock out.", "warning");
+          dom.quickEmpId.focus();
+          return;
+        }
+
+        dom.quickEmpId.value = "";
+        dom.quickEmpName.value = "";
+        clockOutRecord(target);
+      }
+
+      function handleManualSubmit(event) {
+        event.preventDefault();
+        const empId = dom.manualEmpId.value.trim();
+        const name = dom.manualEmpName.value.trim();
+        const date = dom.manualDate.value.trim();
+        const timeIn = TimeUtils.normalizeTimeStr(dom.manualTimeIn.value);
+        const rawOut = dom.manualTimeOut.value.trim();
+        const timeOut = rawOut ? TimeUtils.normalizeTimeStr(rawOut) : "";
+
+        if (!empId || !name || !date || !timeIn) {
+          showToast("Employee ID, Name, Date, and Time In are required.", "warning");
+          return;
+        }
+        if (rawOut && !timeOut) {
+          showToast("Invalid Time Out format.", "error");
+          return;
+        }
+        if (!timeOut && findActiveByEmpId(empId)) {
+          showToast(`${empId} already has an active Clocked In entry. Provide a Time Out or clock them out first.`, "warning");
+          return;
+        }
+
+        const record = {
+          id: TimeUtils.generateId(),
+          empId,
+          name,
+          date,
+          timeIn,
+          timeOut,
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        };
+
+        state.records.unshift(record);
+        dom.manualEntryForm.reset();
+        dom.manualDate.value = TimeUtils.todayIso();
+        dom.manualDrawer.classList.remove("open");
+        persistAndRender();
+        showToast(`Manual entry added for ${record.name}.`, "success");
+      }
+
+      function saveInlineEdit(id, rowEl) {
+        const record = state.records.find((r) => r.id === id);
+        if (!record) return;
+
+        const empId = rowEl.querySelector('[data-field="empId"]').value.trim();
+        const name = rowEl.querySelector('[data-field="name"]').value.trim();
+        const date = rowEl.querySelector('[data-field="date"]').value.trim();
+        const timeInRaw = rowEl.querySelector('[data-field="timeIn"]').value;
+        const timeOutRaw = rowEl.querySelector('[data-field="timeOut"]').value;
+
+        const timeIn = TimeUtils.normalizeTimeStr(timeInRaw);
+        const timeOut = timeOutRaw ? TimeUtils.normalizeTimeStr(timeOutRaw) : "";
+
+        if (!empId || !name || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !timeIn) {
+          showToast("Employee ID, Name, Date, and Time In must all be valid.", "warning");
+          return;
+        }
+
+        if (timeOutRaw && !timeOut) {
+          showToast("Time Out format is invalid.", "warning");
+          return;
+        }
+
+        if (!timeOut) {
+          const conflictingActive = state.records.find(
+            (r) => r.id !== id && r.empId.toLowerCase() === empId.toLowerCase() && !r.timeOut
+          );
+          if (conflictingActive) {
+            showToast(`${empId} already has another active Clocked In session.`, "warning");
+            return;
+          }
+        }
+
+        record.empId = empId;
+        record.name = name;
+        record.date = date;
+        record.timeIn = timeIn;
+        record.timeOut = timeOut;
+        record.updatedAt = Date.now();
+
+        state.editingId = null;
+        persistAndRender();
+        showToast(`Updated record for ${record.name} (${record.empId}).`, "success");
+      }
+
+      function deleteRecord(id) {
+        const idx = state.records.findIndex((r) => r.id === id);
+        if (idx === -1) return;
+
+        const [removed] = state.records.splice(idx, 1);
+        if (state.editingId === id) {
+          state.editingId = null;
+        }
+        persistAndRender();
+
+        showToast(`Deleted log for ${removed.name} (${removed.empId}).`, "info", {
+          label: "Undo",
+          onClick: () => {
+            state.records.splice(Math.min(idx, state.records.length), 0, removed);
+            persistAndRender();
+            showToast(`Restored log for ${removed.name}.`, "success");
+          }
+        });
+      }
+
+      /* =========================================================
+       * Rendering
+       * ========================================================= */
+      function renderStats() {
+        const total = state.records.length;
+        const uniqueEmployees = new Set(state.records.map((r) => r.empId.toLowerCase())).size;
+        const activeCount = state.records.filter((r) => !r.timeOut).length;
+        const completed = state.records.filter((r) => Boolean(r.timeOut));
+
+        let completedSeconds = 0;
+        for (const rec of completed) {
+          const dur = TimeUtils.computeDurationSeconds(rec.date, rec.timeIn, rec.timeOut);
+          if (dur !== null) completedSeconds += dur;
+        }
+
+        dom.statTotalLogs.textContent = String(total);
+        dom.statTotalSub.textContent = `${uniqueEmployees} unique employee${uniqueEmployees === 1 ? "" : "s"}`;
+        dom.statClockedIn.textContent = String(activeCount);
+        dom.statClockedOut.textContent = String(completed.length);
+        dom.statTotalHours.textContent = TimeUtils.formatHoursSummary(completedSeconds);
+        dom.statHoursSub.textContent = `Across ${completed.length} completed shift${completed.length === 1 ? "" : "s"}`;
+      }
+
+      function renderDatalistsAndActiveBar() {
+        const byId = new Map();
+        const names = new Set();
+        for (const rec of state.records) {
+          byId.set(rec.empId, rec.name);
+          names.add(rec.name);
+        }
+
+        dom.knownEmployeeIds.innerHTML = Array.from(byId.entries())
+          .map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`)
+          .join("");
+
+        dom.knownEmployeeNames.innerHTML = Array.from(names)
+          .map((name) => `<option value="${escapeHtml(name)}"></option>`)
+          .join("");
+
+        const active = getSortedRecords(state.records.filter((r) => !r.timeOut));
+        if (active.length === 0) {
+          dom.activeSummaryText.textContent = "No employees currently clocked in.";
+          dom.activePills.innerHTML = "";
+        } else {
+          dom.activeSummaryText.textContent = `${active.length} employee${active.length === 1 ? "" : "s"} clocked in (click to clock out):`;
+          dom.activePills.innerHTML = active
+            .map(
+              (rec) =>
+                `<button type="button" class="active-pill" data-quick-out-id="${escapeHtml(rec.id)}" title="Click to clock out ${escapeHtml(rec.name)}">
+                  <span class="status-dot" style="background: var(--success);"></span>
+                  ${escapeHtml(rec.name)} (${escapeHtml(rec.empId)})
+                </button>`
+            )
+            .join("");
+        }
+      }
+
+      function renderTable() {
+        const filtered = getFilteredRecords();
+        dom.tableCountInfo.textContent = `Showing ${filtered.length} of ${state.records.length} record${state.records.length === 1 ? "" : "s"}`;
+
+        if (filtered.length === 0) {
+          const hasAny = state.records.length > 0;
+          dom.tableBody.innerHTML = `
+            <tr>
+              <td colspan="8">
+                <div class="empty-state">
+                  <strong>${hasAny ? "No matching records found" : "No attendance logs yet"}</strong>
+                  <span>${hasAny ? "Try adjusting your search or filter criteria." : "Use the Quick Clock-In panel above to log your first employee."}</span>
+                </div>
+              </td>
+            </tr>
+          `;
+          return;
+        }
+
+        dom.tableBody.innerHTML = filtered
+          .map((rec) => {
+            const isEditing = state.editingId === rec.id;
+            const isActive = !rec.timeOut;
+            const durSec = TimeUtils.computeDurationSeconds(rec.date, rec.timeIn, rec.timeOut);
+            const durText = TimeUtils.formatDuration(durSec, isActive);
+
+            if (isEditing) {
+              return `
+                <tr class="row-editing" data-row-id="${escapeHtml(rec.id)}">
+                  <td><input type="text" class="input input-sm mono" data-field="empId" value="${escapeHtml(rec.empId)}" aria-label="Employee ID" /></td>
+                  <td><input type="text" class="input input-sm" data-field="name" value="${escapeHtml(rec.name)}" aria-label="Employee Name" /></td>
+                  <td><input type="date" class="input input-sm" data-field="date" value="${escapeHtml(rec.date)}" aria-label="Date" /></td>
+                  <td><input type="time" step="1" class="input input-sm mono" data-field="timeIn" value="${escapeHtml(rec.timeIn)}" aria-label="Time In" /></td>
+                  <td><input type="time" step="1" class="input input-sm mono" data-field="timeOut" value="${escapeHtml(rec.timeOut || "")}" aria-label="Time Out" /></td>
+                  <td class="mono" data-live-duration="${escapeHtml(rec.id)}">${escapeHtml(durText)}</td>
+                  <td>
+                    <span class="status-badge ${isActive ? "status-in" : "status-out"}">
+                      <span class="status-dot"></span>
+                      ${isActive ? "Clocked In" : "Clocked Out"}
+                    </span>
+                  </td>
+                  <td class="col-actions">
+                    <div class="row-actions">
+                      <button type="button" class="btn btn-primary btn-sm" data-action="save">Save</button>
+                      <button type="button" class="btn btn-outline btn-sm" data-action="cancel">Cancel</button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }
+
+            return `
+              <tr data-row-id="${escapeHtml(rec.id)}">
+                <td><span class="emp-id-chip">${escapeHtml(rec.empId)}</span></td>
+                <td class="emp-name">${escapeHtml(rec.name)}</td>
+                <td class="mono">${escapeHtml(rec.date)}</td>
+                <td class="mono">${escapeHtml(TimeUtils.formatTimeDisplay(rec.timeIn))}</td>
+                <td class="mono">${rec.timeOut ? escapeHtml(TimeUtils.formatTimeDisplay(rec.timeOut)) : "<span style='color:var(--text-subtle)'>—</span>"}</td>
+                <td class="mono" data-live-duration="${escapeHtml(rec.id)}">${escapeHtml(durText)}</td>
+                <td>
+                  <span class="status-badge ${isActive ? "status-in" : "status-out"}">
+                    <span class="status-dot"></span>
+                    ${isActive ? "Clocked In" : "Clocked Out"}
+                  </span>
+                </td>
+                <td class="col-actions">
+                  <div class="row-actions">
+                    ${isActive ? `<button type="button" class="btn btn-warning btn-sm" data-action="clock-out">Clock Out</button>` : ""}
+                    <button type="button" class="btn btn-outline btn-sm" data-action="edit">Edit</button>
+                    <button type="button" class="btn btn-ghost-danger btn-sm" data-action="delete">Delete</button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          })
+          .join("");
+      }
+
+      function updateLiveDurationsAndClock() {
+        const now = new Date();
+        dom.liveClockTime.textContent = TimeUtils.formatLiveTime(now);
+        dom.liveClockDate.textContent = TimeUtils.formatLiveDate(now);
+
+        // Refresh elapsed time cells for active Clocked In rows without destroying inline edits
+        for (const rec of state.records) {
+          if (!rec.timeOut) {
+            const cell = dom.tableBody.querySelector(`[data-live-duration="${CSS.escape(rec.id)}"]`);
+            if (cell) {
+              const durSec = TimeUtils.computeDurationSeconds(rec.date, rec.timeIn, "");
+              cell.textContent = TimeUtils.formatDuration(durSec, true);
+            }
+          }
+        }
+      }
+
+      function render() {
+        renderStats();
+        renderDatalistsAndActiveBar();
+        renderTable();
+      }
+
+      /* =========================================================
+       * Print / PDF Preparation
+       * ========================================================= */
+      function prepareAndPrint() {
+        const filtered = getFilteredRecords();
+        const parts = [];
+        if (state.filters.search.trim()) parts.push(`Search: "${state.filters.search.trim()}"`);
+        if (state.filters.status !== "all") {
+          parts.push(`Status: ${state.filters.status === "in" ? "Clocked In" : "Clocked Out"}`);
+        }
+        if (state.filters.date) parts.push(`Date: ${state.filters.date}`);
+
+        dom.printFilterSummary.textContent = parts.length > 0 ? `Filters — ${parts.join(" | ")}` : "Scope: All attendance records";
+        dom.printGeneratedAt.textContent = new Date().toLocaleString();
+        dom.printRecordCount.textContent = String(filtered.length);
+
+        if (state.editingId) {
+          state.editingId = null;
+          renderTable();
+        }
+        window.print();
+      }
+
+      /* =========================================================
+       * JSON Import / Clear Modals
+       * ========================================================= */
+      function openImportModal(records) {
+        state.pendingImportRecords = records;
+        dom.importSummaryText.textContent = `Found ${records.length} valid attendance record${records.length === 1 ? "" : "s"} in the backup file. Choose how to restore:`;
+        dom.importModal.classList.add("open");
+      }
+
+      function closeImportModal() {
+        state.pendingImportRecords = null;
+        dom.importModal.classList.remove("open");
+        dom.jsonFileInput.value = "";
+      }
+
+      function executeJsonImport() {
+        const incoming = state.pendingImportRecords;
+        if (!incoming) {
+          closeImportModal();
+          return;
+        }
+
+        const mode = document.querySelector('input[name="importMode"]:checked')?.value || "merge";
+        if (mode === "replace") {
+          state.records = incoming;
+          state.editingId = null;
+          persistAndRender();
+          showToast(`Restored ${incoming.length} record${incoming.length === 1 ? "" : "s"} (replaced existing data).`, "success");
+        } else {
+          const existingIds = new Set(state.records.map((r) => r.id));
+          let added = 0;
+          for (const rec of incoming) {
+            if (!existingIds.has(rec.id)) {
+              state.records.push(rec);
+              existingIds.add(rec.id);
+              added++;
+            }
+          }
+          persistAndRender();
+          showToast(`Merged backup: added ${added} new record${added === 1 ? "" : "s"} (${incoming.length - added} already present).`, "success");
+        }
+
+        closeImportModal();
+      }
+
+      function handleJsonFileSelected(event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const parsed = JSON.parse(String(reader.result || ""));
+            const rawList = Array.isArray(parsed) ? parsed : parsed?.records;
+            if (!Array.isArray(rawList)) {
+              showToast("Invalid JSON backup format: expected a records array.", "error");
+              dom.jsonFileInput.value = "";
+              return;
+            }
+            const validRecords = rawList.map(StorageService.sanitizeRecord).filter(Boolean);
+            if (validRecords.length === 0 && rawList.length > 0) {
+              showToast("No valid attendance records found inside the JSON file.", "error");
+              dom.jsonFileInput.value = "";
+              return;
+            }
+            openImportModal(validRecords);
+          } catch (err) {
+            showToast("Could not parse JSON file. Please verify the file is valid JSON.", "error");
+            dom.jsonFileInput.value = "";
+          }
+        };
+        reader.readAsText(file);
+      }
+
+      /* =========================================================
+       * Event Listeners
+       * ========================================================= */
+      function bindEvents() {
+        // Auto-fill employee name when typing a known Employee ID
+        dom.quickEmpId.addEventListener("input", () => {
+          const knownName = findKnownEmployeeName(dom.quickEmpId.value);
+          if (knownName && !dom.quickEmpName.value.trim()) {
+            dom.quickEmpName.value = knownName;
+          }
+        });
+
+        // Pressing Enter in the Quick form clocks in (or clocks out if already clocked in)
+        dom.quickClockForm.addEventListener("submit", (e) => {
+          e.preventDefault();
+          const active = findActiveByEmpId(dom.quickEmpId.value);
+          if (active) {
+            handleQuickClockOut();
+          } else {
+            handleClockIn();
+          }
+        });
+
+        dom.btnClockIn.addEventListener("click", handleClockIn);
+        dom.btnClockOut.addEventListener("click", handleQuickClockOut);
+
+        // Quick active-employee pills
+        dom.activePills.addEventListener("click", (e) => {
+          const pill = e.target.closest("[data-quick-out-id]");
+          if (!pill) return;
+          const rec = state.records.find((r) => r.id === pill.dataset.quickOutId);
+          if (rec) clockOutRecord(rec);
+        });
+
+        // Manual entry drawer
+        dom.btnToggleManual.addEventListener("click", () => {
+          const isOpen = dom.manualDrawer.classList.toggle("open");
+          if (isOpen) {
+            if (!dom.manualDate.value) dom.manualDate.value = TimeUtils.todayIso();
+            if (!dom.manualTimeIn.value) dom.manualTimeIn.value = TimeUtils.nowTime24();
+            dom.manualEmpId.focus();
+          }
+        });
+        dom.btnCancelManual.addEventListener("click", () => {
+          dom.manualDrawer.classList.remove("open");
+        });
+        dom.manualEntryForm.addEventListener("submit", handleManualSubmit);
+
+        // Filters
+        dom.filterSearch.addEventListener("input", () => {
+          state.filters.search = dom.filterSearch.value;
+          renderTable();
+        });
+        dom.filterStatus.addEventListener("change", () => {
+          state.filters.status = dom.filterStatus.value;
+          renderTable();
+        });
+        dom.filterDate.addEventListener("change", () => {
+          state.filters.date = dom.filterDate.value;
+          renderTable();
+        });
+        dom.btnResetFilters.addEventListener("click", () => {
+          state.filters = { search: "", status: "all", date: "" };
+          dom.filterSearch.value = "";
+          dom.filterStatus.value = "all";
+          dom.filterDate.value = "";
+          renderTable();
+        });
+
+        // Table row actions (delegated)
+        dom.tableBody.addEventListener("click", (e) => {
+          const btn = e.target.closest("[data-action]");
+          if (!btn) return;
+          const row = btn.closest("tr[data-row-id]");
+          if (!row) return;
+
+          const id = row.dataset.rowId;
+          const action = btn.dataset.action;
+
+          if (action === "clock-out") {
+            const rec = state.records.find((r) => r.id === id);
+            if (rec) clockOutRecord(rec);
+          } else if (action === "edit") {
+            state.editingId = id;
+            renderTable();
+            const firstInput = dom.tableBody.querySelector(`tr[data-row-id="${CSS.escape(id)}"] input`);
+            if (firstInput) firstInput.focus();
+          } else if (action === "cancel") {
+            state.editingId = null;
+            renderTable();
+          } else if (action === "save") {
+            saveInlineEdit(id, row);
+          } else if (action === "delete") {
+            deleteRecord(id);
+          }
+        });
+
+        // Keyboard support inside inline-edit row (Enter = save, Escape = cancel)
+        dom.tableBody.addEventListener("keydown", (e) => {
+          const row = e.target.closest("tr.row-editing[data-row-id]");
+          if (!row) return;
+          if (e.key === "Enter") {
+            e.preventDefault();
+            saveInlineEdit(row.dataset.rowId, row);
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            state.editingId = null;
+            renderTable();
+          }
+        });
+
+        // Exports & Print
+        dom.btnExportCsv.addEventListener("click", () => {
+          const records = getFilteredRecords();
+          if (records.length === 0) {
+            showToast("No records to export.", "warning");
+            return;
+          }
+          FileExporter.exportCsv(records);
+          showToast(`Exported ${records.length} record${records.length === 1 ? "" : "s"} to CSV.`, "success");
+        });
+
+        dom.btnPrintPdf.addEventListener("click", prepareAndPrint);
+
+        dom.btnExportJson.addEventListener("click", () => {
+          FileExporter.exportJson(state.records);
+          showToast(`Backed up ${state.records.length} record${state.records.length === 1 ? "" : "s"} to JSON.`, "success");
+        });
+
+        dom.btnImportJson.addEventListener("click", () => {
+          dom.jsonFileInput.click();
+        });
+        dom.jsonFileInput.addEventListener("change", handleJsonFileSelected);
+
+        // Import modal controls
+        dom.btnCloseImportModal.addEventListener("click", closeImportModal);
+        dom.btnCancelImport.addEventListener("click", closeImportModal);
+        dom.btnConfirmImport.addEventListener("click", executeJsonImport);
+        dom.importModal.addEventListener("click", (e) => {
+          if (e.target === dom.importModal) closeImportModal();
+        });
+
+        // Clear all modal controls
+        dom.btnClearAll.addEventListener("click", () => {
+          if (state.records.length === 0) {
+            showToast("There are no records to clear.", "info");
+            return;
+          }
+          dom.clearRecordCount.textContent = String(state.records.length);
+          dom.clearModal.classList.add("open");
+        });
+
+        const closeClearModal = () => dom.clearModal.classList.remove("open");
+        dom.btnCloseClearModal.addEventListener("click", closeClearModal);
+        dom.btnCancelClear.addEventListener("click", closeClearModal);
+        dom.clearModal.addEventListener("click", (e) => {
+          if (e.target === dom.clearModal) closeClearModal();
+        });
+        dom.btnConfirmClear.addEventListener("click", () => {
+          const backupCopy = [...state.records];
+          state.records = [];
+          state.editingId = null;
+          closeClearModal();
+          persistAndRender();
+          showToast("Cleared all attendance logs.", "warning", {
+            label: "Undo",
+            onClick: () => {
+              state.records = backupCopy;
+              persistAndRender();
+              showToast("Restored all cleared attendance logs.", "success");
+            }
+          });
+        });
+      }
+
+      /* =========================================================
+       * Bootstrap
+       * ========================================================= */
+      bindEvents();
+      render();
+      updateLiveDurationsAndClock();
+      setInterval(updateLiveDurationsAndClock, 1000);
+    })();
+  </script>
+</body>
+</html>
