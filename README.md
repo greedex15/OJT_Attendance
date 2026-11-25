@@ -101,21 +101,26 @@ Open `http://localhost:3000`. Vite proxies `/api/*` requests to the backend on p
 | `GET` | `/api/health` | Public | Service and database connectivity check |
 | `POST` | `/api/auth/login` | Public | Authenticate user (`School ID` + `LRN/Password`) and return Bearer JWT |
 | `GET` | `/api/auth/me` | Bearer | Get current authenticated user profile |
-| `GET` | `/api/users` | Admin | List all registered user & admin accounts |
-| `POST` | `/api/users` | Admin | Create a new user/trainee or admin account |
+| `PUT` | `/api/users/me` | User | Update own display name and profile image |
+| `PUT` | `/api/auth/me/profile` | User | Update own display name and PNG/JPEG/WebP profile image (up to 1 MB) |
+| `GET` | `/api/users` | Admin | List registered accounts |
+| `POST` | `/api/users` | Admin | Create a trainee or an admin/coordinator/supervisor/adviser account |
 | `PUT` | `/api/users/{id}/profile` | Admin | Update trainee profile details without changing username or attendance records |
-| `GET` | `/api/students` | Bearer | List trainees (Admin: all; User: own profile only) |
+| `GET` | `/api/students` | Bearer | List trainees (user: own profile; admin/adviser: all profiles) |
 | `POST` | `/api/students` | Admin | Register a new OJT trainee |
 | `GET` | `/api/students/lookup?code=...` | User | Lookup own trainee profile from QR code and check active shift |
 | `POST` | `/api/clock-in` | User | Record Time In with supervisor name & Base64 signature |
 | `POST` | `/api/clock-out` | User | Record Time Out with supervisor name & Base64 signature |
-| `GET` | `/api/records` | Bearer | Query attendance logs (Admin: all; User: own logs only) |
+| `GET` | `/api/records` | Bearer | Query attendance logs (user: own logs; admin/adviser: all logs) |
 | `PUT` / `DELETE` | `/api/records/{id}` | Bearer | Always forbidden; attendance records are immutable |
-| `GET` | `/api/journals` | Bearer | List journals (User: own entries; Admin: read-only all entries) |
+| `GET` | `/api/journals` | Bearer | List own entries (user) or adviser-visible entries; admins are forbidden |
 | `POST` | `/api/journals` | User | Create a journal entry with daily activity and achievements |
 | `PUT` | `/api/journals/{id}` | User | Edit the user's own journal entry |
-| `GET` | `/api/messages` | Bearer | List the latest 500 shared chat messages |
-| `POST` | `/api/messages` | Bearer | Post a message as the authenticated user with a Coordinator, Supervisor, or Adviser label |
+| `GET` | `/api/conversations` | Staff | List other active admin/coordinator/supervisor/adviser accounts |
+| `GET` | `/api/messages?with_username={id}` | Staff | List messages in a one-to-one conversation |
+| `POST` | `/api/messages` | Staff | Send a message using `{ "recipient_username": "...", "content": "..." }` |
+
+Only `user` accounts can use attendance clock actions, QR lookup, journal access/writes, self-profile editing, and own-record exports. Admins cannot access journals or DTR/export controls. Admins and advisers can monitor trainees/attendance; coordinators, supervisors, and advisers can use direct messaging. The Chatbox is unavailable to trainees. Admin-created trainee profiles include course/major, the fixed Isabela State University - Main Echague Campus school, department, gender, and section/major fields used by attendance analytics.
 
 ### Default Login Accounts
 On first startup when `users` is empty, default accounts are seeded:

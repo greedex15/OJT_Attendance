@@ -125,7 +125,7 @@ function JournalContent({ content }) {
   return <EditorContent editor={editor} />;
 }
 
-function JournalCard({ entry, onEdit, isAdmin }) {
+function JournalCard({ entry, onEdit, isMonitor, isTrainee }) {
   const dateLabel = new Date(entry.entry_date + "T00:00:00").toLocaleDateString(undefined, {
     weekday: "long",
     year: "numeric",
@@ -140,12 +140,12 @@ function JournalCard({ entry, onEdit, isAdmin }) {
           <Calendar className="w-4 h-4 text-blue-500 shrink-0" />
           <div className="min-w-0">
             <div className="text-xs font-semibold text-blue-700 truncate">{dateLabel}</div>
-            {isAdmin && (
+            {isMonitor && (
               <div className="text-[11px] text-slate-500 truncate">{entry.owner_name} · {entry.owner_username}</div>
             )}
           </div>
         </div>
-        {!isAdmin && (
+        {isTrainee && (
           <button
             type="button"
             onClick={() => onEdit(entry)}
@@ -296,7 +296,8 @@ export default function JournalPage({ currentUser, apiRequest, onNotify, onBack 
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // null | entry object | "new"
   const [isSaving, setIsSaving] = useState(false);
-  const isAdmin = currentUser?.role === "admin";
+  const isTrainee = currentUser?.role === "user";
+  const isMonitor = currentUser?.role === "admin" || currentUser?.role === "adviser";
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -353,16 +354,16 @@ export default function JournalPage({ currentUser, apiRequest, onNotify, onBack 
           </button>
           <div>
             <h2 className="font-bold text-slate-900 text-base leading-tight">
-              {isAdmin ? "All Trainee Journals" : "My OJT Journal"}
+              {isMonitor ? "All Trainee Journals" : "My OJT Journal"}
             </h2>
             <p className="text-xs text-slate-500">
-              {isAdmin
+              {isMonitor
                 ? "View all trainee daily journal entries"
                 : "Write your daily achievements, tasks & reflections"}
             </p>
           </div>
         </div>
-        {!isAdmin && (
+        {isTrainee && (
           <button
             type="button"
             onClick={() => setEditing("new")}
@@ -383,7 +384,7 @@ export default function JournalPage({ currentUser, apiRequest, onNotify, onBack 
           <div className="text-center py-16">
             <FileText className="w-12 h-12 text-slate-200 mx-auto mb-3" />
             <p className="text-slate-600 font-semibold">No journal entries yet</p>
-            {!isAdmin && (
+            {isTrainee && (
               <p className="text-slate-400 text-sm mt-1">
                 Tap <strong>New Entry</strong> to write your first daily journal.
               </p>
@@ -395,7 +396,8 @@ export default function JournalPage({ currentUser, apiRequest, onNotify, onBack 
               key={entry.id}
               entry={entry}
               onEdit={(e) => setEditing(e)}
-              isAdmin={isAdmin}
+              isMonitor={isMonitor}
+              isTrainee={isTrainee}
             />
           ))
         )}

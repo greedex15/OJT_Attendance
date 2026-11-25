@@ -1,8 +1,10 @@
 from datetime import date as dt_date
 from datetime import datetime, timezone
+import base64
+import binascii
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 
 def _utc_isoformat(value: Optional[datetime]) -> Optional[str]:
@@ -27,6 +29,59 @@ def _validate_base64_image(value: str) -> str:
     return cleaned
 
 
+def _validate_profile_image(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    mime, separator, payload = value.partition(";base64,")
+    if not separator or mime not in {
+        "data:image/png",
+        "data:image/jpeg",
+        "data:image/webp",
+    }:
+        raise ValueError("Profile image must be a PNG, JPEG, or WebP Base64 data URL.")
+    try:
+        image_bytes = base64.b64decode(payload, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError("Profile image contains invalid Base64 data.") from error
+    if not image_bytes or len(image_bytes) > 1_000_000:
+        raise ValueError("Profile image must be between 1 byte and 1 MB.")
+    if mime == "data:image/png":
+        valid_signature = image_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+    elif mime == "data:image/jpeg":
+        valid_signature = image_bytes.startswith(b"\xff\xd8\xff")
+    else:
+        valid_signature = image_bytes.startswith(b"RIFF") and image_bytes[8:12] == b"WEBP"
+    if not valid_signature:
+        raise ValueError("Profile image data does not match its image type.")
+    return value
+
+
+COURSE_OPTIONS = (
+    "BS Information Technology",
+    "BS Computer Science",
+    "BS Information Systems",
+)
+MAJOR_OPTIONS = ("Networking and Security", "Web and Mobile App Development")
+DEPARTMENT_OPTIONS = (
+    "CCSIT",
+    "College of Engineering",
+    "College of Arts and Sciences",
+    "College of Business and Accountancy",
+    "College of Education",
+    "Other",
+)
+DEFAULT_SCHOOL = "Isabela State University - Main Echague Campus"
+CHAT_ROLES = ("admin", "coordinator", "supervisor", "adviser")
+LATE_REASONS = (
+    "Traffic",
+    "Weather",
+    "Health/Appointment",
+    "Emergency",
+    "Schedule Conflict",
+    "Other",
+)
+
+
 class UserResponse(BaseModel):
     id: int
     username: str
@@ -34,6 +89,7 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
     created_at: datetime
+    profile_image: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -79,8 +135,11 @@ class AdminCreateUserRequest(BaseModel):
     password: str = Field(..., min_length=6, max_length=128)
     role: str = Field(default="user")
     course: Optional[str] = Field(default=None, max_length=150)
-    school: Optional[str] = Field(default=None, max_length=180)
-    department: Optional[str] = Field(default=None, max_length=150)
+    school: str = Field(default=DEFAULT_SCHOOL, max_length=180)
+    department: Optional[str] = Field(default="CCSIT", max_length=150)
+    gender: Optional[Literal["Male", "Female"]] = None
+    major: Optional[Literal["Networking and Security", "Web and Mobile App Development"]] = None
+    section: Optional[str] = Field(default=None, max_length=120)
     required_hours: int = Field(default=486, ge=1, le=5000)
 
     @field_validator("username")
@@ -103,9 +162,44 @@ class AdminCreateUserRequest(BaseModel):
     @classmethod
     def validate_role(cls, v: str) -> str:
         cleaned = v.strip().lower()
-        if cleaned not in {"user", "admin"}:
-            raise ValueError("Role must be either 'user' or 'admin'.")
+        if cleaned not in {"user", *CHAT_ROLES}:
+            raise ValueError("Role must be user, admin, coordinator, supervisor, or adviser.")
         return cleaned
+
+    @field_validator("course")
+    @classmethod
+    def validate_course(cls, value: Optional[str]) -> Optional[str]:
+        if value and value not in COURSE_OPTIONS:
+            raise ValueError("Choose a course from the available options.")
+        return value
+
+    @field_validator("department")
+    @classmethod
+    def validate_department(cls, value: Optional[str]) -> Optional[str]:
+        if value and value not in DEPARTMENT_OPTIONS:
+            raise ValueError("Choose a department from the available options.")
+        return value
+
+    @field_validator("major")
+    @classmethod
+    def validate_major(cls, value: Optional[str]) -> Optional[str]:
+        if value and value not in MAJOR_OPTIONS:
+            raise ValueError("Choose a major from the available options.")
+        return value
+
+    @field_validator("school")
+    @classmethod
+    def set_school(cls, value: str) -> str:
+        if value != DEFAULT_SCHOOL:
+            raise ValueError(f"School must be {DEFAULT_SCHOOL}.")
+        return value
+
+    @model_validator(mode="after")
+    def require_trainee_details(self) -> "AdminCreateUserRequest":
+        if self.role == "user":
+            if not self.course or not self.department or not self.gender or not self.major:
+                raise ValueError("Trainees require a course, department, gender, and major.")
+        return self
 
 
 class TraineeProfileUpdate(BaseModel):
@@ -113,6 +207,9 @@ class TraineeProfileUpdate(BaseModel):
     course: Optional[str] = Field(default=None, max_length=150)
     school: Optional[str] = Field(default=None, max_length=180)
     department: Optional[str] = Field(default=None, max_length=150)
+    gender: Optional[Literal["Male", "Female"]] = None
+    major: Optional[Literal["Networking and Security", "Web and Mobile App Development"]] = None
+    section: Optional[str] = Field(default=None, max_length=120)
     required_hours: int = Field(default=486, ge=1, le=5000)
 
     @field_validator("full_name")
@@ -122,6 +219,24 @@ class TraineeProfileUpdate(BaseModel):
         if len(cleaned) < 2:
             raise ValueError("Full name must be at least 2 characters.")
         return cleaned
+
+
+class MyProfileUpdate(BaseModel):
+    full_name: str = Field(..., min_length=2, max_length=150)
+    profile_image: Optional[str] = Field(default=None, max_length=1_400_000)
+
+    @field_validator("full_name")
+    @classmethod
+    def strip_profile_name(cls, value: str) -> str:
+        cleaned = value.strip()
+        if len(cleaned) < 2:
+            raise ValueError("Full name must be at least 2 characters.")
+        return cleaned
+
+    @field_validator("profile_image")
+    @classmethod
+    def validate_profile_image(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_profile_image(value)
 
 
 class AuthTokenResponse(BaseModel):
@@ -136,6 +251,9 @@ class StudentBase(BaseModel):
     course: Optional[str] = Field(default=None, max_length=150)
     school: Optional[str] = Field(default=None, max_length=180)
     department: Optional[str] = Field(default=None, max_length=150)
+    gender: Optional[Literal["Male", "Female"]] = None
+    major: Optional[str] = Field(default=None, max_length=120)
+    section: Optional[str] = Field(default=None, max_length=120)
     required_hours: int = Field(default=486, ge=1, le=5000)
 
 
@@ -167,6 +285,7 @@ class AttendanceRecordResponse(BaseModel):
     clock_out_supervisor: Optional[str] = None
     clock_out_signature: Optional[str] = None
     notes: Optional[str] = None
+    late_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -184,6 +303,9 @@ class StudentLookupResponse(BaseModel):
     course: Optional[str] = None
     school: Optional[str] = None
     department: Optional[str] = None
+    gender: Optional[str] = None
+    major: Optional[str] = None
+    section: Optional[str] = None
     required_hours: Optional[int] = None
     active_record: Optional[AttendanceRecordResponse] = None
 
@@ -196,6 +318,14 @@ class ClockInRequest(BaseModel):
     supervisor_name: str = Field(..., min_length=2, max_length=150)
     signature_base64: str
     notes: Optional[str] = Field(default=None, max_length=500)
+    late_reason: Optional[Literal[
+        "Traffic",
+        "Weather",
+        "Health/Appointment",
+        "Emergency",
+        "Schedule Conflict",
+        "Other",
+    ]] = None
     client_time: Optional[datetime] = None
 
     @field_validator("student_id", "supervisor_name")
@@ -284,8 +414,16 @@ class JournalEntryResponse(BaseModel):
 
 
 class ChatMessageCreate(BaseModel):
-    sender_role: Literal["Coordinator", "Supervisor", "Adviser"]
+    recipient_username: str = Field(..., min_length=1, max_length=64)
     content: str = Field(..., min_length=1, max_length=4000)
+
+    @field_validator("recipient_username")
+    @classmethod
+    def normalize_recipient(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if not cleaned:
+            raise ValueError("Recipient is required.")
+        return cleaned
 
     @field_validator("content")
     @classmethod
@@ -301,6 +439,7 @@ class ChatMessageResponse(BaseModel):
     sender_username: str
     sender_name: str
     sender_role: str
+    recipient_username: Optional[str] = None
     content: str
     created_at: datetime
 
@@ -309,3 +448,10 @@ class ChatMessageResponse(BaseModel):
     @field_serializer("created_at", when_used="json")
     def serialize_created_at(self, value: datetime) -> Optional[str]:
         return _utc_isoformat(value)
+
+
+class ChatConversationResponse(BaseModel):
+    username: str
+    full_name: str
+    role: str
+    profile_image: Optional[str] = None

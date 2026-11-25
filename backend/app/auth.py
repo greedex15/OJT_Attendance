@@ -145,10 +145,20 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 
 def require_student_user(current_user: User = Depends(get_current_user)) -> User:
-    """Require a standard OJT user (admins are monitoring-only and cannot clock in/out)."""
-    if current_user.role == "admin":
+    """Require a standard OJT user for trainee-only actions."""
+    if current_user.role != "user":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin accounts are for monitoring only and cannot clock in or clock out.",
+            detail="Only trainee accounts can clock in, clock out, or manage journals.",
+        )
+    return current_user
+
+
+def require_chat_user(current_user: User = Depends(get_current_user)) -> User:
+    """Require an authorized staff role for direct messaging."""
+    if current_user.role not in {"admin", "coordinator", "supervisor", "adviser"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Chatbox access is restricted to staff accounts.",
         )
     return current_user

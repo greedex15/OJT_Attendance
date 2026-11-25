@@ -17,6 +17,7 @@ export default function SignatureModal({
   const [department, setDepartment] = useState("");
   const [supervisorName, setSupervisorName] = useState("");
   const [notes, setNotes] = useState("");
+  const [lateReason, setLateReason] = useState("");
   const [error, setError] = useState("");
   const [hasDrawn, setHasDrawn] = useState(false);
 
@@ -27,6 +28,7 @@ export default function SignatureModal({
       setDepartment(studentData.department || "");
       setSupervisorName("");
       setNotes("");
+      setLateReason("");
       setError("");
       setHasDrawn(false);
       setTimeout(() => {
@@ -88,6 +90,7 @@ export default function SignatureModal({
       supervisor_name: supervisorName.trim(),
       signature_base64: signatureBase64,
       notes: notes.trim() || null,
+      late_reason: isClockOut ? null : lateReason || null,
     });
   }
 
@@ -258,6 +261,26 @@ export default function SignatureModal({
               )}
             </div>
           </div>
+
+          {/* Optional Journal Notes */}
+          {!isClockOut && (
+            <div>
+              <label htmlFor="late-reason" className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1.5">
+                Late clock-in reason (if applicable)
+              </label>
+              <select
+                id="late-reason"
+                value={lateReason}
+                onChange={(event) => setLateReason(event.target.value)}
+                className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Not late / no reason to record</option>
+                {["Traffic", "Weather", "Health/Appointment", "Emergency", "Schedule Conflict", "Other"].map((reason) => (
+                  <option key={reason} value={reason}>{reason}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Optional Journal Notes */}
           <div>

@@ -13,6 +13,7 @@ class User(Base):
     username = Column(String(64), unique=True, index=True, nullable=False)
     full_name = Column(String(150), nullable=False)
     role = Column(String(32), nullable=False, default="user")
+    profile_image = Column(Text, nullable=True)
     password_hash = Column(String(255), nullable=False)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -29,6 +30,9 @@ class Student(Base):
     course = Column(String(150), nullable=True)
     school = Column(String(180), nullable=True)
     department = Column(String(150), nullable=True)
+    gender = Column(String(16), nullable=True)
+    major = Column(String(120), nullable=True)
+    section = Column(String(120), nullable=True)
     required_hours = Column(Integer, nullable=False, default=486)
     qr_code_value = Column(String(255), unique=True, index=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -57,6 +61,7 @@ class AttendanceRecord(Base):
     clock_out_signature = Column(Text, nullable=True)
 
     notes = Column(Text, nullable=True)
+    late_reason = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),
@@ -93,12 +98,13 @@ class JournalEntry(Base):
 
 
 class ChatMessage(Base):
-    """Persisted message posted in the shared OJT chatbox."""
+    """Persisted one-to-one message between authorized staff accounts."""
 
     __tablename__ = "chat_messages"
 
     id = Column(Integer, primary_key=True, index=True)
     sender_username = Column(String(64), index=True, nullable=False)
+    recipient_username = Column(String(64), index=True, nullable=True)
     sender_name = Column(String(150), nullable=False)
     sender_role = Column(String(32), nullable=False)
     content = Column(Text, nullable=False)

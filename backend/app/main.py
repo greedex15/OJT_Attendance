@@ -15,6 +15,7 @@ from .auth import (
     get_current_user,
     hash_password,
     require_admin,
+    require_chat_user,
     require_student_user,
     verify_password,
 )
@@ -24,6 +25,7 @@ from .schemas import (
     AdminCreateUserRequest,
     AttendanceRecordResponse,
     AuthTokenResponse,
+    ChatConversationResponse,
     ChatMessageCreate,
     ChatMessageResponse,
     ClockInRequest,
@@ -31,6 +33,7 @@ from .schemas import (
     JournalEntryCreate,
     JournalEntryResponse,
     JournalEntryUpdate,
+    MyProfileUpdate,
     StudentCreate,
     StudentLookupResponse,
     StudentResponse,
@@ -78,6 +81,8 @@ DEFAULT_SEED_STUDENTS = [
     },
 ]
 PHILIPPINE_TIMEZONE = timezone(timedelta(hours=8), "PHT")
+MONITOR_ROLES = {"admin", "adviser"}
+CHAT_ROLES = {"admin", "coordinator", "supervisor", "adviser"}
 
 
 def seed_initial_users(db: Session) -> None:
@@ -171,6 +176,28 @@ def migrate_journal_entries() -> None:
             )
 
 
+def migrate_added_columns() -> None:
+    additions = {
+        "users": {"profile_image": "TEXT"},
+        "students": {"gender": "VARCHAR(16)", "major": "VARCHAR(120)", "section": "VARCHAR(120)"},
+        "attendance_records": {"late_reason": "VARCHAR(64)"},
+        "chat_messages": {"recipient_username": "VARCHAR(64)"},
+    }
+    for table, columns_to_add in additions.items():
+        existing_columns = {column["name"] for column in inspect(engine).get_columns(table)}
+        for column, sql_type in columns_to_add.items():
+            if column not in existing_columns:
+                with engine.begin() as connection:
+                    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}"))
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_chat_messages_recipient_username "
+                "ON chat_messages (recipient_username)"
+            )
+        )
+
+
 def parse_qr_payload(raw_code: str) -> dict:
     """Support plain student ID strings as well as JSON-encoded QR codes."""
     trimmed = raw_code.strip()
@@ -194,6 +221,7 @@ def parse_qr_payload(raw_code: str) -> dict:
 async def lifespan(_app: FastAPI):
     wait_for_db()
     Base.metadata.create_all(bind=engine)
+    migrate_added_columns()
     migrate_journal_entries()
     db = SessionLocal()
     try:
@@ -255,10 +283,32 @@ def read_current_user(current_user: User = Depends(get_current_user)):
     return current_user
 
 
+@app.put("/api/auth/me/profile", response_model=UserResponse)
+@app.put("/api/users/me", response_model=UserResponse)
+def update_my_profile(
+    payload: MyProfileUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_student_user),
+):
+    current_user.full_name = payload.full_name
+    if "profile_image" in payload.model_fields_set:
+        current_user.profile_image = payload.profile_image
+    student = (
+        db.query(Student)
+        .filter(func.lower(Student.student_id) == current_user.username.lower())
+        .first()
+    )
+    if student:
+        student.full_name = payload.full_name
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
 # =========================================================
 # Admin-Only User & Trainee Management Endpoints
 # =========================================================
-@app.get("/api/users", response_model=List[UserResponse])
+@app.get("/api/users", response_model=List[UserResponse], response_model_exclude={"profile_image"})
 def list_users(
     db: Session = Depends(get_db),
     _admin: User = Depends(require_admin),
@@ -303,6 +353,9 @@ def admin_create_user(
                     course=payload.course.strip() if payload.course else None,
                     school=payload.school.strip() if payload.school else None,
                     department=payload.department.strip() if payload.department else None,
+                    gender=payload.gender,
+                    major=payload.major,
+                    section=payload.section.strip() if payload.section else None,
                     required_hours=payload.required_hours,
                     qr_code_value=payload.username,
                 )
@@ -349,6 +402,9 @@ def admin_update_trainee_profile(
             course=payload.course.strip() if payload.course else None,
             school=payload.school.strip() if payload.school else None,
             department=payload.department.strip() if payload.department else None,
+            gender=payload.gender,
+            major=payload.major,
+            section=payload.section.strip() if payload.section else None,
             required_hours=payload.required_hours,
             qr_code_value=user.username,
         )
@@ -359,6 +415,9 @@ def admin_update_trainee_profile(
     student.course = payload.course.strip() if payload.course else None
     student.school = payload.school.strip() if payload.school else None
     student.department = payload.department.strip() if payload.department else None
+    student.gender = payload.gender
+    student.major = payload.major
+    student.section = payload.section.strip() if payload.section else None
     student.required_hours = payload.required_hours
     db.commit()
     db.refresh(student)
@@ -373,14 +432,15 @@ def list_students(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role == "admin":
+    if current_user.role in MONITOR_ROLES:
         return db.query(Student).order_by(Student.student_id.asc()).all()
-
-    return (
-        db.query(Student)
-        .filter(func.lower(Student.student_id) == current_user.username.lower())
-        .all()
-    )
+    if current_user.role == "user":
+        return (
+            db.query(Student)
+            .filter(func.lower(Student.student_id) == current_user.username.lower())
+            .all()
+        )
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid account role.")
 
 
 @app.post("/api/students", response_model=StudentResponse, status_code=status.HTTP_201_CREATED)
@@ -409,6 +469,9 @@ def create_student(
         course=payload.course.strip() if payload.course else None,
         school=payload.school.strip() if payload.school else None,
         department=payload.department.strip() if payload.department else None,
+        gender=payload.gender,
+        major=payload.major,
+        section=payload.section.strip() if payload.section else None,
         required_hours=payload.required_hours,
         qr_code_value=qr_val,
     )
@@ -465,6 +528,9 @@ def lookup_student_by_qr(
             course=student.course,
             school=student.school,
             department=student.department,
+            gender=student.gender,
+            major=student.major,
+            section=student.section,
             required_hours=student.required_hours,
             active_record=active_record,
         )
@@ -527,6 +593,7 @@ def clock_in(
         student_name=resolved_name,
         course=(payload.course or (student.course if student else None)),
         department=(payload.department or (student.department if student else None)),
+        late_reason=payload.late_reason,
         date=now_utc.astimezone(PHILIPPINE_TIMEZONE).date(),
         time_in=now_utc,
         time_out=None,
@@ -603,11 +670,13 @@ def get_records(
 ):
     query = db.query(AttendanceRecord)
 
-    # Non-admin users can only view their own logs
-    if current_user.role != "admin":
+    if current_user.role == "user":
         query = query.filter(func.lower(AttendanceRecord.student_id) == current_user.username.lower())
-    elif student_id and student_id.strip():
-        query = query.filter(func.lower(AttendanceRecord.student_id) == student_id.strip().lower())
+    elif current_user.role in MONITOR_ROLES:
+        if student_id and student_id.strip():
+            query = query.filter(func.lower(AttendanceRecord.student_id) == student_id.strip().lower())
+    else:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid account role.")
 
     if search and search.strip():
         term = f"%{search.strip()}%"
@@ -667,10 +736,14 @@ def list_journals(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return journal entries. Users see only their own; admins see all."""
+    """Return a trainee's entries; advisers can view entries but admins cannot access journals."""
+    if current_user.role == "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin accounts cannot access journals.")
     q = db.query(JournalEntry)
-    if current_user.role != "admin":
+    if current_user.role == "user":
         q = q.filter(JournalEntry.owner_username == current_user.username.lower())
+    elif current_user.role not in MONITOR_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid account role.")
     return q.order_by(JournalEntry.entry_date.desc(), JournalEntry.created_at.desc()).all()
 
 
@@ -702,10 +775,14 @@ def get_journal(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.role == "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin accounts cannot access journals.")
     entry = db.query(JournalEntry).filter(JournalEntry.id == journal_id).first()
     if not entry:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Journal entry not found.")
-    if current_user.role != "admin" and entry.owner_username != current_user.username.lower():
+    if current_user.role == "user" and entry.owner_username != current_user.username.lower():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+    if current_user.role not in {"user", "adviser"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
     return entry
 
@@ -742,21 +819,62 @@ def update_journal(
 
 
 # =========================================================
-# Shared Chatbox
+# Direct Chatbox
 # =========================================================
+
+@app.get("/api/conversations", response_model=List[ChatConversationResponse])
+def list_conversations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_chat_user),
+):
+    peers = (
+        db.query(User)
+        .filter(
+            User.id != current_user.id,
+            User.is_active.is_(True),
+            User.role.in_(CHAT_ROLES),
+        )
+        .order_by(User.full_name.asc())
+        .all()
+    )
+    return [
+        ChatConversationResponse(
+            username=peer.username,
+            full_name=peer.full_name,
+            role=peer.role,
+        )
+        for peer in peers
+    ]
+
 
 @app.get("/api/messages", response_model=List[ChatMessageResponse])
 def list_messages(
+    with_username: str = Query(..., min_length=1, max_length=64),
     db: Session = Depends(get_db),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_chat_user),
 ):
-    messages = (
+    peer_username = with_username.strip().lower()
+    peer = (
+        db.query(User)
+        .filter(User.username == peer_username, User.is_active.is_(True))
+        .first()
+    )
+    if not peer or peer.role not in CHAT_ROLES:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff conversation not found.")
+    return (
         db.query(ChatMessage)
-        .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+        .filter(
+            or_(
+                (ChatMessage.sender_username == current_user.username.lower())
+                & (ChatMessage.recipient_username == peer_username),
+                (ChatMessage.sender_username == peer_username)
+                & (ChatMessage.recipient_username == current_user.username.lower()),
+            )
+        )
+        .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
         .limit(500)
         .all()
     )
-    return list(reversed(messages))
 
 
 @app.post(
@@ -767,12 +885,22 @@ def list_messages(
 def create_message(
     payload: ChatMessageCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_chat_user),
 ):
+    peer = (
+        db.query(User)
+        .filter(User.username == payload.recipient_username, User.is_active.is_(True))
+        .first()
+    )
+    if not peer or peer.role not in CHAT_ROLES:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff recipient not found.")
+    if peer.id == current_user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot message yourself.")
     message = ChatMessage(
-        sender_username=current_user.username,
+        sender_username=current_user.username.lower(),
+        recipient_username=peer.username.lower(),
         sender_name=current_user.full_name,
-        sender_role=payload.sender_role,
+        sender_role=current_user.role,
         content=payload.content,
     )
     db.add(message)

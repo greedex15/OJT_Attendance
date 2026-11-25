@@ -1,16 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
+  Camera,
   CheckCircle2,
   Clock,
   Eye,
   LogOut,
+  Menu,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
   QrCode,
   RefreshCw,
   Search,
   Shield,
-  User,
   UserPlus,
   Users,
   X,
@@ -22,10 +25,27 @@ import ExportButtons from "./components/ExportButtons.jsx";
 import LoginPage from "./components/LoginPage.jsx";
 import JournalPage from "./components/JournalEditor.jsx";
 import ChatboxPage from "./components/ChatboxPage.jsx";
+import AttendanceAnalytics from "./components/AttendanceAnalytics.jsx";
 import { parseAttendanceTimestamp } from "./utils/time.js";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const AUTH_TOKEN_KEY = "ojt_auth_token";
+const DEFAULT_SCHOOL = "Isabela State University - Main Echague Campus";
+const COURSE_OPTIONS = [
+  "BS Information Technology",
+  "BS Computer Science",
+  "BS Information Systems",
+];
+const MAJOR_OPTIONS = ["Networking and Security", "Web and Mobile App Development"];
+const DEPARTMENT_OPTIONS = [
+  "CCSIT",
+  "College of Engineering",
+  "College of Arts and Sciences",
+  "College of Business and Accountancy",
+  "College of Education",
+  "Other",
+];
+const STAFF_ROLES = ["admin", "coordinator", "supervisor", "adviser"];
 
 async function apiRequest(path, options = {}) {
   const token = localStorage.getItem(AUTH_TOKEN_KEY);
@@ -84,6 +104,16 @@ function formatDurationMinutes(timeInIso, timeOutIso) {
   const rem = mins % 60;
   const formatted = `${hrs}h ${String(rem).padStart(2, "0")}m`;
   return timeOutIso ? formatted : `${formatted} (live)`;
+}
+
+function UserAvatar({ user, className = "h-9 w-9" }) {
+  return user?.profile_image ? (
+    <img src={user.profile_image} alt="" className={`${className} rounded-full object-cover`} />
+  ) : (
+    <span className={`${className} inline-flex items-center justify-center rounded-full bg-blue-100 font-semibold text-blue-700`}>
+      {(user?.full_name || "?").slice(0, 1).toUpperCase()}
+    </span>
+  );
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -152,6 +182,12 @@ function AttendanceCard({ rec }) {
           {rec.notes}
         </div>
       )}
+      {rec.late_reason && (
+        <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <span className="mr-1 font-semibold uppercase text-[10px]">Late reason:</span>
+          {rec.late_reason}
+        </div>
+      )}
     </div>
   );
 }
@@ -169,8 +205,10 @@ export default function App() {
   const [submittingSignature, setSubmittingSignature] = useState(false);
   const [nowClock, setNowClock] = useState(new Date());
 
-  // Tab navigation: "attendance" | "journal"
+  // Page navigation
   const [activeTab, setActiveTab] = useState("attendance");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -185,16 +223,24 @@ export default function App() {
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [newUserForm, setNewUserForm] = useState({
     username: "", full_name: "", password: "", role: "user",
-    course: "", school: "", department: "", required_hours: 486,
+    course: "BS Information Technology", major: MAJOR_OPTIONS[0],
+    school: DEFAULT_SCHOOL, department: "CCSIT", gender: "", required_hours: 486,
   });
   const [adminAccountSearch, setAdminAccountSearch] = useState("");
   const [traineeDirectorySearch, setTraineeDirectorySearch] = useState("");
   const [editingTrainee, setEditingTrainee] = useState(null);
   const [traineeProfileForm, setTraineeProfileForm] = useState(null);
   const [savingTraineeProfile, setSavingTraineeProfile] = useState(false);
+  const [showMyProfileModal, setShowMyProfileModal] = useState(false);
+  const [myProfileForm, setMyProfileForm] = useState({ full_name: "", profile_image: null });
+  const [savingMyProfile, setSavingMyProfile] = useState(false);
+  const [profileImageError, setProfileImageError] = useState("");
   const [toast, setToast] = useState(null);
 
   const isAdmin = currentUser?.role === "admin";
+  const isTrainee = currentUser?.role === "user";
+  const isMonitor = currentUser?.role === "admin" || currentUser?.role === "adviser";
+  const canAccessChatbox = STAFF_ROLES.includes(currentUser?.role);
 
   const notify = useCallback((message, type = "info") => {
     setToast({ message, type, id: Date.now() });
@@ -232,8 +278,19 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!currentUser) return;
+    if (!canAccessChatbox && activeTab === "chatbox") setActiveTab("attendance");
+    else if (isAdmin && activeTab === "journal") setActiveTab("attendance");
+    else if (!isTrainee && !isMonitor && activeTab !== "chatbox") setActiveTab("chatbox");
+  }, [activeTab, canAccessChatbox, currentUser, isAdmin, isMonitor, isTrainee]);
+
   const fetchDirectory = useCallback(async () => {
     if (!currentUser) return;
+    if (!isTrainee && !isMonitor) {
+      setStudents([]);
+      return;
+    }
     try {
       const studentData = await apiRequest("/api/students");
       setStudents(studentData);
@@ -245,10 +302,15 @@ export default function App() {
       if (err.status === 401) { handleLogout(); return; }
       notify(`Failed to load directory: ${err.message}`, "error");
     }
-  }, [currentUser, handleLogout, notify]);
+  }, [currentUser, handleLogout, isMonitor, isTrainee, notify]);
 
   const fetchRecords = useCallback(async () => {
     if (!currentUser) return;
+    if (!isTrainee && !isMonitor) {
+      setRecords([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -265,7 +327,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [currentUser, search, statusFilter, dateFrom, dateTo, handleLogout, notify]);
+  }, [currentUser, dateFrom, dateTo, handleLogout, isMonitor, isTrainee, notify, search, statusFilter]);
 
   useEffect(() => { if (currentUser) { fetchDirectory(); } }, [currentUser, fetchDirectory]);
   useEffect(() => { if (currentUser) { fetchRecords(); } }, [currentUser, fetchRecords]);
@@ -277,8 +339,8 @@ export default function App() {
   }
 
   async function handleLookupStudent(code) {
-    if (isAdmin) {
-      notify("Admin accounts are for monitoring only.", "warning");
+    if (!isTrainee) {
+      notify("Only trainee accounts can clock in or clock out.", "warning");
       return;
     }
     setLookupBusy(true);
@@ -320,6 +382,7 @@ export default function App() {
             student_name: payload.student_name,
             course: payload.course,
             department: payload.department,
+            late_reason: payload.late_reason,
             supervisor_name: payload.supervisor_name,
             signature_base64: payload.signature_base64,
             notes: payload.notes,
@@ -346,7 +409,11 @@ export default function App() {
         body: JSON.stringify({ ...newUserForm, required_hours: Number(newUserForm.required_hours) || 486 }),
       });
       notify(`Added ${newUserForm.role} account for ${newUserForm.full_name}.`, "success");
-      setNewUserForm({ username: "", full_name: "", password: "", role: "user", course: "", school: "", department: "", required_hours: 486 });
+      setNewUserForm({
+        username: "", full_name: "", password: "", role: "user",
+        course: "BS Information Technology", major: MAJOR_OPTIONS[0],
+        school: DEFAULT_SCHOOL, department: "CCSIT", gender: "", required_hours: 486,
+      });
       setShowAddUserModal(false);
       await fetchDirectory();
     } catch (err) {
@@ -365,6 +432,8 @@ export default function App() {
       course: profile?.course || "",
       school: profile?.school || "",
       department: profile?.department || "",
+      gender: profile?.gender || "",
+      major: profile?.major || "",
       required_hours: profile?.required_hours || 486,
     });
   }
@@ -394,9 +463,55 @@ export default function App() {
     }
   }
 
+  function openMyProfileModal() {
+    setMyProfileForm({
+      full_name: currentUser.full_name,
+      profile_image: currentUser.profile_image || null,
+    });
+    setProfileImageError("");
+    setShowMyProfileModal(true);
+  }
+
+  function handleProfileImageChange(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 1_000_000) {
+      setProfileImageError("Choose a PNG, JPEG, or WebP image no larger than 1 MB.");
+      event.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setMyProfileForm((form) => ({ ...form, profile_image: String(reader.result) }));
+      setProfileImageError("");
+    };
+    reader.onerror = () => setProfileImageError("The selected image could not be read.");
+    reader.readAsDataURL(file);
+  }
+
+  async function handleMyProfileSave(event) {
+    event.preventDefault();
+    setSavingMyProfile(true);
+    try {
+      const updatedUser = await apiRequest("/api/users/me", {
+        method: "PUT",
+        body: JSON.stringify(myProfileForm),
+      });
+      setCurrentUser(updatedUser);
+      setShowMyProfileModal(false);
+      notify("Your profile was updated.", "success");
+      await fetchDirectory();
+    } catch (error) {
+      if (error.status === 401) { handleLogout(); return; }
+      notify(`Could not update your profile: ${error.message}`, "error");
+    } finally {
+      setSavingMyProfile(false);
+    }
+  }
+
   const accountKeyword = adminAccountSearch.trim().toLowerCase();
   const filteredAdminAccounts = usersList.filter(
-    (account) => account.role === "admin"
+    (account) => account.role !== "user"
       && (!accountKeyword || `${account.full_name} ${account.username}`.toLowerCase().includes(accountKeyword)),
   );
   const traineeKeyword = traineeDirectorySearch.trim().toLowerCase();
@@ -412,6 +527,7 @@ export default function App() {
       account.full_name,
       account.username,
       profile?.course,
+      profile?.major,
       profile?.school,
       profile?.department,
     ].some((value) => value?.toLowerCase().includes(traineeKeyword)));
@@ -424,6 +540,27 @@ export default function App() {
     const mins = totalMinutes % 60;
     return { total: records.length, active, completedCount: completed.length, totalHoursFormatted: `${hrs}h ${String(mins).padStart(2, "0")}m` };
   }, [records]);
+
+  const navigationItems = [
+    ...(isTrainee || isMonitor ? [{ id: "attendance", label: "Attendance", icon: Clock }] : []),
+    ...(!isAdmin && (isTrainee || isMonitor) ? [{ id: "journal", label: "Journal", icon: BookOpen }] : []),
+    ...(canAccessChatbox ? [{ id: "chatbox", label: "Chatbox", icon: MessageSquare }] : []),
+  ];
+  const renderNavigation = (compact = sidebarCollapsed) => navigationItems.map(({ id, label, icon: Icon }) => (
+    <button
+      key={id}
+      type="button"
+      title={compact ? label : undefined}
+      aria-current={activeTab === id ? "page" : undefined}
+      onClick={() => { setActiveTab(id); setMobileSidebarOpen(false); }}
+      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+        activeTab === id ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+      } ${compact ? "justify-center" : ""}`}
+    >
+      <Icon className="h-5 w-5 shrink-0" />
+      {!compact && <span>{label}</span>}
+    </button>
+  ));
 
   if (authChecking) {
     return (
@@ -439,19 +576,34 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
-
-      {/* ── Top Header ─────────────────────────────────────────────────────── */}
-      <header className="bg-white border-b border-slate-200 shadow-sm shrink-0 sticky top-0 z-30">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className={`w-9 h-9 rounded-xl text-white flex items-center justify-center shadow-sm shrink-0 ${isAdmin ? "bg-indigo-600" : "bg-blue-600"}`}>
-              {isAdmin ? <Eye className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
+      <header className="no-print sticky top-0 z-30 shrink-0 border-b border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between gap-3 px-3 py-3 sm:px-5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(true)}
+              aria-label="Open navigation"
+              className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 md:hidden"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className="hidden rounded-lg p-2 text-slate-600 hover:bg-slate-100 md:inline-flex"
+            >
+              {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+            </button>
+            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white shadow-sm ${isMonitor ? "bg-indigo-600" : "bg-blue-600"}`}>
+              {isMonitor ? <Eye className="h-5 w-5" /> : <Clock className="h-5 w-5" />}
             </div>
+            <UserAvatar user={currentUser} className="hidden h-8 w-8 shrink-0 sm:!inline-flex" />
             <div className="min-w-0">
-              <h1 className="text-sm font-bold text-slate-900 leading-tight">OJT Attendance</h1>
-              <p className="text-[11px] text-slate-500 leading-tight truncate max-w-[180px] sm:max-w-xs">
+              <h1 className="text-sm font-bold leading-tight text-slate-900">OJT Attendance</h1>
+              <p className="max-w-[180px] truncate text-[11px] leading-tight text-slate-500 sm:max-w-xs">
                 {currentUser.full_name}
-                <span className={`ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${isAdmin ? "bg-indigo-600 text-white" : "bg-blue-200 text-blue-900"}`}>
+                <span className={`ml-1 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${isMonitor ? "bg-indigo-100 text-indigo-800" : "bg-blue-100 text-blue-800"}`}>
                   {currentUser.role}
                 </span>
               </p>
@@ -459,108 +611,125 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Live clock (desktop) */}
-            <div className="hidden sm:block text-right">
+            <div className="hidden text-right sm:block">
               <div className="font-mono text-sm font-bold text-slate-900">{nowClock.toLocaleTimeString()}</div>
               <div className="text-[11px] text-slate-500">
                 {nowClock.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
               </div>
             </div>
-
-            {!isAdmin && (
+            {isTrainee && (
               <button
                 type="button"
                 onClick={() => {
-                  const matched = students.find((s) => s.student_id.toLowerCase() === currentUser.username.toLowerCase());
+                  const matched = students.find((student) => student.student_id.toLowerCase() === currentUser.username.toLowerCase());
                   setQrBadgeStudent(matched || { student_id: currentUser.username, full_name: currentUser.full_name, qr_code_value: currentUser.username });
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
               >
-                <QrCode className="w-4 h-4" />
+                <QrCode className="h-4 w-4" />
                 <span className="hidden sm:inline">My QR</span>
               </button>
             )}
-
             {isAdmin && (
               <button
                 type="button"
                 onClick={() => setShowAddUserModal(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-indigo-700"
               >
-                <UserPlus className="w-4 h-4" />
+                <UserPlus className="h-4 w-4" />
                 <span className="hidden sm:inline">Add User</span>
               </button>
             )}
-
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 text-slate-600 hover:text-rose-700 text-xs font-semibold transition"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="h-4 w-4" />
               <span className="hidden sm:inline">Sign Out</span>
             </button>
           </div>
         </div>
-
-        {/* Tab Bar */}
-        <div className="max-w-4xl mx-auto px-4 flex border-t border-slate-100">
-          <button
-            type="button"
-            onClick={() => setActiveTab("attendance")}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold border-b-2 transition ${activeTab === "attendance" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
-          >
-            <Clock className="w-4 h-4" />
-            Attendance
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("journal")}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold border-b-2 transition ${activeTab === "journal" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
-          >
-            <BookOpen className="w-4 h-4" />
-            Journal
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("chatbox")}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold border-b-2 transition ${activeTab === "chatbox" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
-          >
-            <MessageSquare className="w-4 h-4" />
-            Chatbox
-          </button>
-        </div>
       </header>
 
-      {/* ── Journal Page ───────────────────────────────────────────────────── */}
-      {activeTab === "journal" && (
-        <div className="flex-1 max-w-4xl mx-auto w-full flex flex-col min-h-0">
-          <JournalPage
-            currentUser={currentUser}
-            apiRequest={apiRequest}
-            onNotify={notify}
-            onBack={() => setActiveTab("attendance")}
-          />
-        </div>
-      )}
+      <div className="no-print flex min-h-0 flex-1">
+        <aside className={`hidden shrink-0 flex-col border-r border-slate-200 bg-white p-3 md:flex ${sidebarCollapsed ? "w-[4.5rem]" : "w-64"}`}>
+          <nav className="space-y-1" aria-label="Main navigation">{renderNavigation()}</nav>
+          <div className={`mt-auto border-t border-slate-100 pt-3 ${sidebarCollapsed ? "flex flex-col items-center" : ""}`}>
+            <div className={`flex items-center gap-2.5 ${sidebarCollapsed ? "justify-center" : "px-1"}`}>
+              <UserAvatar user={currentUser} className="h-9 w-9 shrink-0" />
+              {!sidebarCollapsed && (
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-semibold text-slate-800">{currentUser.full_name}</p>
+                  <p className="truncate text-[10px] capitalize text-slate-500">{currentUser.role}</p>
+                </div>
+              )}
+            </div>
+            {isTrainee && (
+              <button
+                type="button"
+                onClick={openMyProfileModal}
+                title={sidebarCollapsed ? "Edit profile" : undefined}
+                className={`mt-2 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 ${sidebarCollapsed ? "justify-center" : ""}`}
+              >
+                <Camera className="h-4 w-4 shrink-0" />
+                {!sidebarCollapsed && <span>Edit profile</span>}
+              </button>
+            )}
+          </div>
+        </aside>
 
-      {activeTab === "chatbox" && (
-        <ChatboxPage
-          currentUser={currentUser}
-          apiRequest={apiRequest}
-          onNotify={notify}
-        />
-      )}
+        {mobileSidebarOpen && (
+          <div className="fixed inset-0 z-40 md:hidden">
+            <button type="button" aria-label="Close navigation" onClick={() => setMobileSidebarOpen(false)} className="absolute inset-0 bg-slate-900/40" />
+            <aside className="relative flex h-full w-[min(18rem,85vw)] flex-col bg-white p-4 shadow-xl">
+              <div className="mb-5 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <UserAvatar user={currentUser} className="h-9 w-9" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">{currentUser.full_name}</p>
+                    <p className="text-xs capitalize text-slate-500">{currentUser.role}</p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setMobileSidebarOpen(false)} aria-label="Close navigation" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <nav className="space-y-1" aria-label="Main navigation">{renderNavigation(false)}</nav>
+              {isTrainee && (
+                <button type="button" onClick={() => { openMyProfileModal(); setMobileSidebarOpen(false); }} className="mt-4 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">
+                  <Camera className="h-5 w-5" /> Edit profile
+                </button>
+              )}
+            </aside>
+          </div>
+        )}
+
+        <div className="min-w-0 flex-1 overflow-y-auto">
+          {activeTab === "journal" && !isAdmin && (
+            <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col">
+              <JournalPage
+                currentUser={currentUser}
+                apiRequest={apiRequest}
+                onNotify={notify}
+                onBack={() => setActiveTab("attendance")}
+              />
+            </div>
+          )}
+
+          {activeTab === "chatbox" && canAccessChatbox && (
+            <ChatboxPage currentUser={currentUser} apiRequest={apiRequest} onNotify={notify} />
+          )}
 
       {/* ── Attendance Page ────────────────────────────────────────────────── */}
       {activeTab === "attendance" && (
-        <main className="max-w-4xl mx-auto w-full px-4 py-5 space-y-5 no-print">
+        <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5">
 
           {/* KPI Cards */}
           <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: isAdmin ? "Total Logs" : "My Total Logs", value: stats.total, sub: "Filtered records", color: "text-slate-900" },
-              { label: "Clocked In Now", value: stats.active, sub: isAdmin ? "Active trainees" : "Active shift", color: "text-emerald-600" },
+              { label: isMonitor ? "Total Logs" : "My Total Logs", value: stats.total, sub: "Filtered records", color: "text-slate-900" },
+              { label: "Clocked In Now", value: stats.active, sub: isMonitor ? "Active trainees" : "Active shift", color: "text-emerald-600" },
               { label: "Completed Shifts", value: stats.completedCount, sub: "Signed off", color: "text-slate-900" },
               { label: "OJT Hours", value: stats.totalHoursFormatted, sub: "Verified hours", color: "text-blue-600" },
             ].map((kpi) => (
@@ -573,7 +742,7 @@ export default function App() {
           </section>
 
           {/* QR Scanner (users only) */}
-          {!isAdmin && (
+          {isTrainee && (
             <QRScanner
               onLookupStudent={handleLookupStudent}
               onShowQrBadge={setQrBadgeStudent}
@@ -582,15 +751,15 @@ export default function App() {
             />
           )}
 
-          {/* Admin Accounts */}
+          {/* Staff Accounts */}
           {isAdmin && (
             <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-200 bg-indigo-50/40 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Shield className="w-4 h-4 text-indigo-600" />
                   <div>
-                    <h2 className="text-sm font-semibold text-slate-900">Admin Accounts ({usersList.filter((u) => u.role === "admin").length})</h2>
-                    <p className="text-[11px] text-slate-500">Search administrator accounts</p>
+                    <h2 className="text-sm font-semibold text-slate-900">Staff Accounts ({usersList.filter((u) => u.role !== "user").length})</h2>
+                    <p className="text-[11px] text-slate-500">Authorized monitoring and chat accounts</p>
                   </div>
                 </div>
               </div>
@@ -599,8 +768,8 @@ export default function App() {
                   type="search"
                   value={adminAccountSearch}
                   onChange={(event) => setAdminAccountSearch(event.target.value)}
-                  placeholder="Filter admins by name or School ID…"
-                  aria-label="Filter admin accounts"
+                  placeholder="Filter staff by name or School ID…"
+                  aria-label="Filter staff accounts"
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
                 <div className="flex flex-wrap gap-2">
@@ -611,13 +780,13 @@ export default function App() {
                         <div className="font-mono text-[11px] text-slate-500">ID: {account.username}</div>
                       </div>
                       <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-indigo-100 text-indigo-800">
-                        Admin
+                        {account.role}
                       </span>
                     </div>
                   ))}
                   {filteredAdminAccounts.length === 0 && (
                     <p className="text-xs text-slate-400 p-2">
-                      {usersList.some((account) => account.role === "admin") ? "No admin accounts match your filter." : "No admin accounts found."}
+                      {usersList.some((account) => account.role !== "user") ? "No staff accounts match your filter." : "No staff accounts found."}
                     </p>
                   )}
                 </div>
@@ -664,7 +833,7 @@ export default function App() {
                         </div>
                         <div className="font-mono text-[11px] text-slate-500">ID: {account.username}</div>
                         <div className="text-[11px] text-slate-500 truncate">
-                          {[profile?.course, profile?.school, profile?.department].filter(Boolean).join(" · ") || "Profile details not available"}
+                          {[profile?.course, profile?.major, profile?.gender, profile?.school, profile?.department].filter(Boolean).join(" · ") || "Profile details not available"}
                         </div>
                         {profile && <div className="text-[11px] text-slate-500">Required: {profile.required_hours} hours</div>}
                       </div>
@@ -703,11 +872,11 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-blue-600" />
                 <h2 className="text-sm font-semibold text-slate-900">
-                  {isAdmin ? "All Attendance Logs" : "My Attendance Logs"}
+                  {isMonitor ? "Attendance Analytics" : "My Attendance Logs"}
                 </h2>
               </div>
               <div className="flex items-center gap-2">
-                <ExportButtons records={records} onNotify={notify} />
+                {!isAdmin && <ExportButtons records={records} onNotify={notify} />}
                 <button
                   type="button"
                   onClick={fetchRecords}
@@ -726,7 +895,7 @@ export default function App() {
                   type="search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder={isAdmin ? "Search by name, ID, supervisor…" : "Search supervisor…"}
+                  placeholder={isMonitor ? "Search by name, ID, supervisor…" : "Search supervisor…"}
                   className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
               </div>
@@ -756,14 +925,16 @@ export default function App() {
 
             {/* Records list */}
             <div className="p-4">
-              {loading ? (
+              {isMonitor ? (
+                <AttendanceAnalytics students={students} records={records} />
+              ) : loading ? (
                 <div className="text-center py-10 text-sm text-slate-400">Loading records…</div>
               ) : records.length === 0 ? (
                 <div className="text-center py-10">
                   <CheckCircle2 className="w-10 h-10 text-slate-200 mx-auto mb-2" />
                   <p className="text-sm font-semibold text-slate-700">No attendance records found</p>
                   <p className="text-xs text-slate-400 mt-1">
-                    {isAdmin ? "Logs appear once trainees clock in." : "Use the QR scanner above to record your attendance."}
+                    Use the QR scanner above to record your attendance.
                   </p>
                 </div>
               ) : (
@@ -775,9 +946,11 @@ export default function App() {
           </section>
         </main>
       )}
+        </div>
+      </div>
 
       {/* ── Printable DTR (hidden on screen) ──────────────────────────────── */}
-      <div className="hidden print-only p-6 text-black">
+      {!isAdmin && <div className="hidden print-only p-6 text-black">
         <div className="border-b-2 border-slate-900 pb-3 mb-4 flex justify-between items-end">
           <div>
             <h1 className="text-xl font-bold uppercase tracking-wide">OJT Daily Time Record</h1>
@@ -823,72 +996,10 @@ export default function App() {
             ))}
           </tbody>
         </table>
-      </div>
-
-      {/* ── Bottom Nav (mobile) ────────────────────────────────────────────── */}
-      <nav className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex z-20 shadow-lg">
-        <button
-          type="button"
-          onClick={() => setActiveTab("attendance")}
-          className={`flex-1 flex flex-col items-center py-2.5 text-[11px] font-semibold gap-1 transition ${activeTab === "attendance" ? "text-blue-600" : "text-slate-400"}`}
-        >
-          <Clock className="w-5 h-5" />
-          Attendance
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("journal")}
-          className={`flex-1 flex flex-col items-center py-2.5 text-[11px] font-semibold gap-1 transition ${activeTab === "journal" ? "text-blue-600" : "text-slate-400"}`}
-        >
-          <BookOpen className="w-5 h-5" />
-          Journal
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("chatbox")}
-          className={`flex-1 flex flex-col items-center py-2.5 text-[11px] font-semibold gap-1 transition ${activeTab === "chatbox" ? "text-blue-600" : "text-slate-400"}`}
-        >
-          <MessageSquare className="w-5 h-5" />
-          Chatbox
-        </button>
-        {!isAdmin && (
-          <button
-            type="button"
-            onClick={() => {
-              const matched = students.find((s) => s.student_id.toLowerCase() === currentUser.username.toLowerCase());
-              setQrBadgeStudent(matched || { student_id: currentUser.username, full_name: currentUser.full_name, qr_code_value: currentUser.username });
-            }}
-            className="flex-1 flex flex-col items-center py-2.5 text-[11px] font-semibold gap-1 text-slate-400"
-          >
-            <QrCode className="w-5 h-5" />
-            My QR
-          </button>
-        )}
-        {isAdmin && (
-          <button
-            type="button"
-            onClick={() => setShowAddUserModal(true)}
-            className="flex-1 flex flex-col items-center py-2.5 text-[11px] font-semibold gap-1 text-slate-400"
-          >
-            <UserPlus className="w-5 h-5" />
-            Add User
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="flex-1 flex flex-col items-center py-2.5 text-[11px] font-semibold gap-1 text-slate-400"
-        >
-          <LogOut className="w-5 h-5" />
-          Sign Out
-        </button>
-      </nav>
-
-      {/* Spacer for bottom nav on mobile */}
-      <div className="sm:hidden h-16 shrink-0" />
+      </div>}
 
       {/* ── Modals ─────────────────────────────────────────────────────────── */}
-      {sigModalState.isOpen && !isAdmin && (
+      {sigModalState.isOpen && isTrainee && (
         <SignatureModal
           isOpen={sigModalState.isOpen}
           mode={sigModalState.mode}
@@ -903,7 +1014,7 @@ export default function App() {
         <QRBadgeModal
           student={qrBadgeStudent}
           onClose={() => setQrBadgeStudent(null)}
-          allowClockAction={!isAdmin}
+          allowClockAction={isTrainee}
           onClockAction={handleLookupStudent}
         />
       )}
@@ -925,17 +1036,14 @@ export default function App() {
               {[
                 { label: "School ID *", key: "username", type: "text", placeholder: "e.g. 23-0123" },
                 { label: "Full Name *", key: "full_name", type: "text", placeholder: "e.g. Juan Dela Cruz" },
-                { label: "Password (LRN) *", key: "password", type: "text", placeholder: "Student LRN" },
-                { label: "Course", key: "course", type: "text", placeholder: "e.g. BS Information Technology" },
-                { label: "School", key: "school", type: "text", placeholder: "e.g. Polytechnic University" },
-                { label: "Department", key: "department", type: "text", placeholder: "e.g. Software Engineering" },
-                { label: "Required Hours", key: "required_hours", type: "number", placeholder: "486" },
+                { label: "Password *", key: "password", type: "password", placeholder: "Set an initial password" },
               ].map(({ label, key, type, placeholder }) => (
                 <div key={key}>
                   <label className="text-xs font-semibold text-slate-600 mb-1 block">{label}</label>
                   <input
                     type={type}
                     value={newUserForm[key]}
+                    required
                     onChange={(e) => setNewUserForm({ ...newUserForm, [key]: e.target.value })}
                     placeholder={placeholder}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -943,7 +1051,7 @@ export default function App() {
                 </div>
               ))}
               <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Role</label>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Account Role *</label>
                 <select
                   value={newUserForm.role}
                   onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value })}
@@ -951,8 +1059,83 @@ export default function App() {
                 >
                   <option value="user">User (Trainee)</option>
                   <option value="admin">Admin</option>
+                  <option value="coordinator">Coordinator</option>
+                  <option value="supervisor">Supervisor</option>
+                  <option value="adviser">OJT Adviser</option>
                 </select>
               </div>
+              {newUserForm.role === "user" && (
+                <>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Course *</label>
+                    <select
+                      required
+                      value={newUserForm.course}
+                      onChange={(event) => setNewUserForm({ ...newUserForm, course: event.target.value })}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">Select course</option>
+                      {[...new Set([...COURSE_OPTIONS, traineeProfileForm.course].filter(Boolean))].map((course) => <option key={course} value={course}>{course}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">School</label>
+                    <input
+                      readOnly
+                      value={DEFAULT_SCHOOL}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Department *</label>
+                    <select
+                      required
+                      value={newUserForm.department}
+                      onChange={(event) => setNewUserForm({ ...newUserForm, department: event.target.value })}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {DEPARTMENT_OPTIONS.map((department) => <option key={department} value={department}>{department}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Gender / Sex *</label>
+                    <select
+                      required
+                      value={newUserForm.gender}
+                      onChange={(event) => setNewUserForm({ ...newUserForm, gender: event.target.value })}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">Select gender</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="new-user-major" className="text-xs font-semibold text-slate-600 mb-1 block">Major *</label>
+                    <select
+                      id="new-user-major"
+                      required
+                      value={newUserForm.major}
+                      onChange={(event) => setNewUserForm({ ...newUserForm, major: event.target.value })}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">Select major</option>
+                      {MAJOR_OPTIONS.map((major) => <option key={major} value={major}>{major}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">Required Hours</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="5000"
+                      value={newUserForm.required_hours}
+                      onChange={(event) => setNewUserForm({ ...newUserForm, required_hours: event.target.value })}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </>
+              )}
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
@@ -994,9 +1177,7 @@ export default function App() {
             <form onSubmit={handleAdminUpdateTraineeProfile} className="p-4 space-y-3">
               {[
                 { label: "Full Name *", key: "full_name", type: "text", required: true },
-                { label: "Course", key: "course", type: "text" },
                 { label: "School", key: "school", type: "text" },
-                { label: "Department", key: "department", type: "text" },
                 { label: "Required Hours *", key: "required_hours", type: "number", min: 1, max: 5000, required: true },
               ].map(({ label, key, type, ...attributes }) => (
                 <div key={key}>
@@ -1011,6 +1192,55 @@ export default function App() {
                   />
                 </div>
               ))}
+              <div>
+                <label htmlFor="trainee-profile-course" className="text-xs font-semibold text-slate-600 mb-1 block">Course</label>
+                <select
+                  id="trainee-profile-course"
+                  value={traineeProfileForm.course}
+                  onChange={(event) => setTraineeProfileForm({ ...traineeProfileForm, course: event.target.value })}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">Not specified</option>
+                  {COURSE_OPTIONS.map((course) => <option key={course} value={course}>{course}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="trainee-profile-department" className="text-xs font-semibold text-slate-600 mb-1 block">Department</label>
+                <select
+                  id="trainee-profile-department"
+                  value={traineeProfileForm.department}
+                  onChange={(event) => setTraineeProfileForm({ ...traineeProfileForm, department: event.target.value })}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">Not specified</option>
+                  {[...new Set([...DEPARTMENT_OPTIONS, traineeProfileForm.department].filter(Boolean))].map((department) => <option key={department} value={department}>{department}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="trainee-profile-gender" className="text-xs font-semibold text-slate-600 mb-1 block">Gender / Sex</label>
+                <select
+                  id="trainee-profile-gender"
+                  value={traineeProfileForm.gender}
+                  onChange={(event) => setTraineeProfileForm({ ...traineeProfileForm, gender: event.target.value })}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">Not specified</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="trainee-profile-major" className="text-xs font-semibold text-slate-600 mb-1 block">Major</label>
+                <select
+                  id="trainee-profile-major"
+                  value={traineeProfileForm.major}
+                  onChange={(event) => setTraineeProfileForm({ ...traineeProfileForm, major: event.target.value })}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">Not specified</option>
+                  {[...new Set([...MAJOR_OPTIONS, traineeProfileForm.major].filter(Boolean))].map((major) => <option key={major} value={major}>{major}</option>)}
+                </select>
+              </div>
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
@@ -1026,6 +1256,64 @@ export default function App() {
                   className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition disabled:opacity-50"
                 >
                   {savingTraineeProfile ? "Saving…" : "Save Profile"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showMyProfileModal && isTrainee && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="max-h-[90dvh] w-full overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:max-w-md sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <h2 className="font-semibold text-slate-900">Edit My Profile</h2>
+              <button type="button" onClick={() => setShowMyProfileModal(false)} aria-label="Close profile editor" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleMyProfileSave} className="space-y-4 p-4">
+              <div className="flex items-center gap-4">
+                <UserAvatar user={{ ...currentUser, ...myProfileForm }} className="h-16 w-16 shrink-0" />
+                <div>
+                  <label htmlFor="profile-image-upload" className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    <Camera className="h-4 w-4" />
+                    Choose photo
+                  </label>
+                  <input
+                    id="profile-image-upload"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={handleProfileImageChange}
+                    className="sr-only"
+                  />
+                  {myProfileForm.profile_image && (
+                    <button type="button" onClick={() => setMyProfileForm({ ...myProfileForm, profile_image: null })} className="ml-2 text-xs font-medium text-rose-600 hover:underline">
+                      Remove
+                    </button>
+                  )}
+                  <p className="mt-1 text-[11px] text-slate-500">PNG, JPEG or WebP · up to 1 MB</p>
+                </div>
+              </div>
+              {profileImageError && <p role="alert" className="text-xs text-rose-600">{profileImageError}</p>}
+              <div>
+                <label htmlFor="my-profile-name" className="mb-1 block text-xs font-semibold text-slate-600">Display name</label>
+                <input
+                  id="my-profile-name"
+                  required
+                  minLength={2}
+                  maxLength={150}
+                  value={myProfileForm.full_name}
+                  onChange={(event) => setMyProfileForm({ ...myProfileForm, full_name: event.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setShowMyProfileModal(false)} disabled={savingMyProfile} className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 disabled:opacity-50">
+                  Cancel
+                </button>
+                <button type="submit" disabled={savingMyProfile || Boolean(profileImageError)} className="flex-1 rounded-xl bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+                  {savingMyProfile ? "Saving…" : "Save Profile"}
                 </button>
               </div>
             </form>
