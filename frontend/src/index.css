@@ -47,28 +47,92 @@
 @media print {
   @page {
     size: landscape;
-    margin: 12mm;
+    margin: 10mm;
   }
 
-  body {
+  html,
+  body,
+  #root,
+  #root > div {
+    width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
     background: #ffffff !important;
     color: #000000 !important;
   }
 
-  .no-print {
+  #root > div > :not(.print-only),
+  #root > div > :not(.print-only) * {
     display: none !important;
   }
 
   .print-only {
     display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #000000 !important;
   }
 
-  .dtr-row {
+  .print-only * {
+    display: revert !important;
+  }
+
+  .dtr-table {
+    display: table !important;
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+  }
+
+  .dtr-table thead {
+    display: table-header-group !important;
+  }
+
+  .dtr-table tr {
     break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .dtr-table th,
+  .dtr-table td {
+    padding: 4px 3px !important;
+    overflow-wrap: anywhere;
+    vertical-align: top;
+    font-size: 7.5pt !important;
+    line-height: 1.25 !important;
+  }
+
+  .dtr-table th:nth-child(1) { width: 9%; }
+  .dtr-table th:nth-child(2) { width: 16%; }
+  .dtr-table th:nth-child(3) { width: 9%; }
+  .dtr-table th:nth-child(4),
+  .dtr-table th:nth-child(5) { width: 16%; }
+  .dtr-table th:nth-child(6) { width: 8%; }
+  .dtr-table th:nth-child(7),
+  .dtr-table th:nth-child(8) { width: 13%; }
+
+  .dtr-signoff {
+    display: block !important;
   }
 
   .dtr-signature-img {
+    display: block !important;
+    width: 22mm !important;
+    height: 10mm !important;
+    object-fit: contain;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  .print-only .text-xs {
+    font-size: 8pt !important;
+  }
+
+  .print-only h1 {
+    font-size: 14pt !important;
   }
 }

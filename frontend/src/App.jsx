@@ -20,6 +20,7 @@ import SignatureModal from "./components/SignatureModal.jsx";
 import ExportButtons from "./components/ExportButtons.jsx";
 import LoginPage from "./components/LoginPage.jsx";
 import JournalPage from "./components/JournalEditor.jsx";
+import { parseAttendanceTimestamp } from "./utils/time.js";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const AUTH_TOKEN_KEY = "ojt_auth_token";
@@ -57,8 +58,8 @@ async function apiRequest(path, options = {}) {
 
 function formatDtrTime(isoStr) {
   if (!isoStr) return "—";
-  const d = new Date(isoStr);
-  if (Number.isNaN(d.getTime())) return isoStr;
+  const d = parseAttendanceTimestamp(isoStr);
+  if (!d) return isoStr;
   const local = d.toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
@@ -73,8 +74,8 @@ function formatDtrTime(isoStr) {
 }
 
 function formatDurationMinutes(timeInIso, timeOutIso) {
-  const start = new Date(timeInIso).getTime();
-  const end = timeOutIso ? new Date(timeOutIso).getTime() : Date.now();
+  const start = parseAttendanceTimestamp(timeInIso)?.getTime();
+  const end = timeOutIso ? parseAttendanceTimestamp(timeOutIso)?.getTime() : Date.now();
   if (!Number.isFinite(start) || !Number.isFinite(end)) return "—";
   const mins = Math.max(0, Math.floor((end - start) / 60000));
   const hrs = Math.floor(mins / 60);
@@ -641,7 +642,7 @@ export default function App() {
             <div>Total Entries: <strong>{records.length}</strong> · Hours: <strong>{stats.totalHoursFormatted}</strong></div>
           </div>
         </div>
-        <table className="w-full border-collapse text-xs">
+        <table className="dtr-table w-full border-collapse text-xs">
           <thead>
             <tr className="bg-slate-100">
               {["Student ID", "Name", "Date", "Time In", "Time Out", "Duration", "Supervisor In", "Supervisor Out"].map((h) => (
@@ -659,16 +660,16 @@ export default function App() {
                 <td className="border border-slate-400 px-2 py-1.5 font-mono">{rec.time_out ? formatDtrTime(rec.time_out) : "In Progress"}</td>
                 <td className="border border-slate-400 px-2 py-1.5 font-mono">{formatDurationMinutes(rec.time_in, rec.time_out)}</td>
                 <td className="border border-slate-400 px-2 py-1.5">
-                  <div className="flex items-center gap-1">
+                  <div className="dtr-signoff flex items-center gap-1">
                     <span>{rec.clock_in_supervisor}</span>
-                    {rec.clock_in_signature && <img src={rec.clock_in_signature} alt="" className="h-7 w-16 object-contain" />}
+                    {rec.clock_in_signature && <img src={rec.clock_in_signature} alt="" className="dtr-signature-img h-7 w-16 object-contain" />}
                   </div>
                 </td>
                 <td className="border border-slate-400 px-2 py-1.5">
                   {rec.clock_out_supervisor ? (
-                    <div className="flex items-center gap-1">
+                    <div className="dtr-signoff flex items-center gap-1">
                       <span>{rec.clock_out_supervisor}</span>
-                      {rec.clock_out_signature && <img src={rec.clock_out_signature} alt="" className="h-7 w-16 object-contain" />}
+                      {rec.clock_out_signature && <img src={rec.clock_out_signature} alt="" className="dtr-signature-img h-7 w-16 object-contain" />}
                     </div>
                   ) : "—"}
                 </td>

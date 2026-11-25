@@ -1,5 +1,6 @@
 import React from "react";
 import { FileSpreadsheet, Printer } from "lucide-react";
+import { parseAttendanceTimestamp } from "../utils/time.js";
 
 function csvEscape(val) {
   const str = String(val ?? "");
@@ -11,8 +12,8 @@ function csvEscape(val) {
 
 function formatIsoTime(isoStr) {
   if (!isoStr) return "";
-  const d = new Date(isoStr);
-  if (Number.isNaN(d.getTime())) return isoStr;
+  const d = parseAttendanceTimestamp(isoStr);
+  if (!d) return isoStr;
   const local = d.toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
@@ -36,8 +37,8 @@ function formatHours(minutes) {
 }
 
 function getDurationMinutes(record) {
-  const start = new Date(record.time_in).getTime();
-  const end = record.time_out ? new Date(record.time_out).getTime() : Date.now();
+  const start = parseAttendanceTimestamp(record.time_in)?.getTime();
+  const end = record.time_out ? parseAttendanceTimestamp(record.time_out)?.getTime() : Date.now();
   return Number.isFinite(start) && Number.isFinite(end)
     ? Math.max(0, Math.floor((end - start) / 60000))
     : null;

@@ -1,10 +1,11 @@
 import React from "react";
 import { LogOut } from "lucide-react";
+import { parseAttendanceTimestamp } from "../utils/time.js";
 
 function formatDateTime(isoStr) {
   if (!isoStr) return "—";
-  const date = new Date(isoStr);
-  if (Number.isNaN(date.getTime())) return isoStr;
+  const date = parseAttendanceTimestamp(isoStr);
+  if (!date) return isoStr;
   const local = date.toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
@@ -19,8 +20,8 @@ function formatDateTime(isoStr) {
 }
 
 function formatDuration(timeIn, timeOut) {
-  const start = new Date(timeIn).getTime();
-  const end = timeOut ? new Date(timeOut).getTime() : Date.now();
+  const start = parseAttendanceTimestamp(timeIn)?.getTime();
+  const end = timeOut ? parseAttendanceTimestamp(timeOut)?.getTime() : Date.now();
   if (!Number.isFinite(start) || !Number.isFinite(end)) return "—";
   const minutes = Math.max(0, Math.floor((end - start) / 60000));
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m${timeOut ? "" : " (live)"}`;
