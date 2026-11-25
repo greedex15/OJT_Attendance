@@ -5,6 +5,7 @@ import {
   Clock,
   Eye,
   LogOut,
+  MessageSquare,
   QrCode,
   RefreshCw,
   Search,
@@ -20,6 +21,7 @@ import SignatureModal from "./components/SignatureModal.jsx";
 import ExportButtons from "./components/ExportButtons.jsx";
 import LoginPage from "./components/LoginPage.jsx";
 import JournalPage from "./components/JournalEditor.jsx";
+import ChatboxPage from "./components/ChatboxPage.jsx";
 import { parseAttendanceTimestamp } from "./utils/time.js";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
@@ -185,6 +187,11 @@ export default function App() {
     username: "", full_name: "", password: "", role: "user",
     course: "", school: "", department: "", required_hours: 486,
   });
+  const [adminAccountSearch, setAdminAccountSearch] = useState("");
+  const [traineeDirectorySearch, setTraineeDirectorySearch] = useState("");
+  const [editingTrainee, setEditingTrainee] = useState(null);
+  const [traineeProfileForm, setTraineeProfileForm] = useState(null);
+  const [savingTraineeProfile, setSavingTraineeProfile] = useState(false);
   const [toast, setToast] = useState(null);
 
   const isAdmin = currentUser?.role === "admin";
@@ -348,6 +355,67 @@ export default function App() {
     }
   }
 
+  function openTraineeProfile(user) {
+    const profile = students.find(
+      (student) => student.student_id.toLowerCase() === user.username.toLowerCase(),
+    );
+    setEditingTrainee(user);
+    setTraineeProfileForm({
+      full_name: profile?.full_name || user.full_name,
+      course: profile?.course || "",
+      school: profile?.school || "",
+      department: profile?.department || "",
+      required_hours: profile?.required_hours || 486,
+    });
+  }
+
+  async function handleAdminUpdateTraineeProfile(event) {
+    event.preventDefault();
+    if (!editingTrainee || !traineeProfileForm) return;
+
+    setSavingTraineeProfile(true);
+    try {
+      await apiRequest(`/api/users/${editingTrainee.id}/profile`, {
+        method: "PUT",
+        body: JSON.stringify({
+          ...traineeProfileForm,
+          required_hours: Number(traineeProfileForm.required_hours),
+        }),
+      });
+      notify(`Updated profile for ${traineeProfileForm.full_name}.`, "success");
+      setEditingTrainee(null);
+      setTraineeProfileForm(null);
+      await fetchDirectory();
+    } catch (err) {
+      if (err.status === 401) { handleLogout(); return; }
+      notify(`Could not update trainee profile: ${err.message}`, "error");
+    } finally {
+      setSavingTraineeProfile(false);
+    }
+  }
+
+  const accountKeyword = adminAccountSearch.trim().toLowerCase();
+  const filteredAdminAccounts = usersList.filter(
+    (account) => account.role === "admin"
+      && (!accountKeyword || `${account.full_name} ${account.username}`.toLowerCase().includes(accountKeyword)),
+  );
+  const traineeKeyword = traineeDirectorySearch.trim().toLowerCase();
+  const filteredTrainees = usersList
+    .filter((account) => account.role === "user")
+    .map((account) => ({
+      account,
+      profile: students.find(
+        (student) => student.student_id.toLowerCase() === account.username.toLowerCase(),
+      ),
+    }))
+    .filter(({ account, profile }) => !traineeKeyword || [
+      account.full_name,
+      account.username,
+      profile?.course,
+      profile?.school,
+      profile?.department,
+    ].some((value) => value?.toLowerCase().includes(traineeKeyword)));
+
   const stats = useMemo(() => {
     const active = records.filter((r) => !r.time_out).length;
     const completed = records.filter((r) => Boolean(r.time_out));
@@ -453,6 +521,14 @@ export default function App() {
             <BookOpen className="w-4 h-4" />
             Journal
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("chatbox")}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold border-b-2 transition ${activeTab === "chatbox" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            Chatbox
+          </button>
         </div>
       </header>
 
@@ -466,6 +542,14 @@ export default function App() {
             onBack={() => setActiveTab("attendance")}
           />
         </div>
+      )}
+
+      {activeTab === "chatbox" && (
+        <ChatboxPage
+          currentUser={currentUser}
+          apiRequest={apiRequest}
+          onNotify={notify}
+        />
       )}
 
       {/* ── Attendance Page ────────────────────────────────────────────────── */}
@@ -498,15 +582,58 @@ export default function App() {
             />
           )}
 
-          {/* Admin Directory */}
+          {/* Admin Accounts */}
           {isAdmin && (
             <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-200 bg-indigo-50/40 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Shield className="w-4 h-4 text-indigo-600" />
                   <div>
+                    <h2 className="text-sm font-semibold text-slate-900">Admin Accounts ({usersList.filter((u) => u.role === "admin").length})</h2>
+                    <p className="text-[11px] text-slate-500">Search administrator accounts</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-3 space-y-3">
+                <input
+                  type="search"
+                  value={adminAccountSearch}
+                  onChange={(event) => setAdminAccountSearch(event.target.value)}
+                  placeholder="Filter admins by name or School ID…"
+                  aria-label="Filter admin accounts"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+                <div className="flex flex-wrap gap-2">
+                  {filteredAdminAccounts.map((account) => (
+                    <div key={account.id} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs">
+                      <div>
+                        <div className="font-semibold text-slate-900">{account.full_name}</div>
+                        <div className="font-mono text-[11px] text-slate-500">ID: {account.username}</div>
+                      </div>
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-indigo-100 text-indigo-800">
+                        Admin
+                      </span>
+                    </div>
+                  ))}
+                  {filteredAdminAccounts.length === 0 && (
+                    <p className="text-xs text-slate-400 p-2">
+                      {usersList.some((account) => account.role === "admin") ? "No admin accounts match your filter." : "No admin accounts found."}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Trainee Directory */}
+          {isAdmin && (
+            <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-200 bg-indigo-50/40 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-indigo-600" />
+                  <div>
                     <h2 className="text-sm font-semibold text-slate-900">Trainee Directory ({usersList.filter((u) => u.role === "user").length})</h2>
-                    <p className="text-[11px] text-slate-500">Admin-managed trainee accounts</p>
+                    <p className="text-[11px] text-slate-500">Search and update trainee profiles</p>
                   </div>
                 </div>
                 <button
@@ -518,35 +645,54 @@ export default function App() {
                   Add
                 </button>
               </div>
-              <div className="p-3 flex flex-wrap gap-2">
-                {usersList.map((u) => {
-                  const matchedStudent = students.find((s) => s.student_id.toLowerCase() === u.username.toLowerCase());
-                  return (
-                    <div key={u.id} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs">
-                      <div>
+              <div className="p-3 space-y-3">
+                <input
+                  type="search"
+                  value={traineeDirectorySearch}
+                  onChange={(event) => setTraineeDirectorySearch(event.target.value)}
+                  placeholder="Filter trainees by name, ID, course, school, or department…"
+                  aria-label="Filter trainee directory"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+                <div className="flex flex-wrap gap-2">
+                  {filteredTrainees.map(({ account, profile }) => (
+                    <div key={account.id} className="flex items-center justify-between gap-3 w-full sm:w-auto px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs">
+                      <div className="min-w-0">
                         <div className="font-semibold text-slate-900 flex items-center gap-1.5">
-                          <span>{u.full_name}</span>
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${u.role === "admin" ? "bg-indigo-100 text-indigo-800" : "bg-slate-200 text-slate-700"}`}>
-                            {u.role}
-                          </span>
+                          <span className="truncate">{account.full_name}</span>
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-200 text-slate-700">Trainee</span>
                         </div>
-                        <div className="font-mono text-[11px] text-slate-500">ID: {u.username}</div>
+                        <div className="font-mono text-[11px] text-slate-500">ID: {account.username}</div>
+                        <div className="text-[11px] text-slate-500 truncate">
+                          {[profile?.course, profile?.school, profile?.department].filter(Boolean).join(" · ") || "Profile details not available"}
+                        </div>
+                        {profile && <div className="text-[11px] text-slate-500">Required: {profile.required_hours} hours</div>}
                       </div>
-                      {u.role === "user" && (
+                      <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           type="button"
-                          onClick={() => setQrBadgeStudent(matchedStudent || { student_id: u.username, full_name: u.full_name, qr_code_value: u.username })}
+                          onClick={() => openTraineeProfile(account)}
+                          className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-indigo-50 text-slate-700 font-medium transition"
+                        >
+                          Edit Profile
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setQrBadgeStudent(profile || { student_id: account.username, full_name: account.full_name, qr_code_value: account.username })}
+                          aria-label={`Show QR code for ${account.full_name}`}
                           className="p-1.5 rounded-md border border-slate-200 bg-white hover:bg-blue-50 text-slate-500 hover:text-blue-600 transition"
                         >
                           <QrCode className="w-3.5 h-3.5" />
                         </button>
-                      )}
+                      </div>
                     </div>
-                  );
-                })}
-                {usersList.length === 0 && (
-                  <p className="text-xs text-slate-400 p-2">No accounts found.</p>
-                )}
+                  ))}
+                  {filteredTrainees.length === 0 && (
+                    <p className="text-xs text-slate-400 p-2">
+                      {usersList.some((account) => account.role === "user") ? "No trainees match your filter." : "No trainee accounts found."}
+                    </p>
+                  )}
+                </div>
               </div>
             </section>
           )}
@@ -697,6 +843,14 @@ export default function App() {
           <BookOpen className="w-5 h-5" />
           Journal
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("chatbox")}
+          className={`flex-1 flex flex-col items-center py-2.5 text-[11px] font-semibold gap-1 transition ${activeTab === "chatbox" ? "text-blue-600" : "text-slate-400"}`}
+        >
+          <MessageSquare className="w-5 h-5" />
+          Chatbox
+        </button>
         {!isAdmin && (
           <button
             type="button"
@@ -812,6 +966,66 @@ export default function App() {
                   className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition"
                 >
                   Add Account
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editingTrainee && traineeProfileForm && isAdmin && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-0 sm:p-4">
+          <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90dvh] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 sticky top-0 bg-white z-10">
+              <div>
+                <h2 className="font-semibold text-slate-900">Edit Trainee Profile</h2>
+                <p className="text-xs text-slate-500">School ID: {editingTrainee.username} (unchanged)</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setEditingTrainee(null); setTraineeProfileForm(null); }}
+                disabled={savingTraineeProfile}
+                aria-label="Close profile editor"
+                className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 disabled:opacity-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleAdminUpdateTraineeProfile} className="p-4 space-y-3">
+              {[
+                { label: "Full Name *", key: "full_name", type: "text", required: true },
+                { label: "Course", key: "course", type: "text" },
+                { label: "School", key: "school", type: "text" },
+                { label: "Department", key: "department", type: "text" },
+                { label: "Required Hours *", key: "required_hours", type: "number", min: 1, max: 5000, required: true },
+              ].map(({ label, key, type, ...attributes }) => (
+                <div key={key}>
+                  <label htmlFor={`trainee-profile-${key}`} className="text-xs font-semibold text-slate-600 mb-1 block">{label}</label>
+                  <input
+                    id={`trainee-profile-${key}`}
+                    type={type}
+                    value={traineeProfileForm[key]}
+                    onChange={(event) => setTraineeProfileForm({ ...traineeProfileForm, [key]: event.target.value })}
+                    {...attributes}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              ))}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setEditingTrainee(null); setTraineeProfileForm(null); }}
+                  disabled={savingTraineeProfile}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-medium text-sm disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingTraineeProfile}
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition disabled:opacity-50"
+                >
+                  {savingTraineeProfile ? "Saving…" : "Save Profile"}
                 </button>
               </div>
             </form>

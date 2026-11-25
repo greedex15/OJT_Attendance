@@ -19,11 +19,13 @@ from .auth import (
     verify_password,
 )
 from .database import Base, SessionLocal, engine, get_db, wait_for_db
-from .models import AttendanceRecord, JournalEntry, Student, User
+from .models import AttendanceRecord, ChatMessage, JournalEntry, Student, User
 from .schemas import (
     AdminCreateUserRequest,
     AttendanceRecordResponse,
     AuthTokenResponse,
+    ChatMessageCreate,
+    ChatMessageResponse,
     ClockInRequest,
     ClockOutRequest,
     JournalEntryCreate,
@@ -32,6 +34,7 @@ from .schemas import (
     StudentCreate,
     StudentLookupResponse,
     StudentResponse,
+    TraineeProfileUpdate,
     UserLoginRequest,
     UserResponse,
 )
@@ -308,6 +311,58 @@ def admin_create_user(
     db.commit()
     db.refresh(user)
     return user
+
+
+@app.put("/api/users/{user_id}/profile", response_model=StudentResponse)
+def admin_update_trainee_profile(
+    user_id: int,
+    payload: TraineeProfileUpdate,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    user = db.query(User).filter(User.id == user_id, User.role == "user").first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trainee account not found.",
+        )
+
+    student = (
+        db.query(Student)
+        .filter(func.lower(Student.student_id) == user.username.lower())
+        .first()
+    )
+    if not student:
+        qr_owner = (
+            db.query(Student)
+            .filter(func.lower(Student.qr_code_value) == user.username.lower())
+            .first()
+        )
+        if qr_owner:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This trainee's School ID is already assigned to another QR profile.",
+            )
+        student = Student(
+            student_id=user.username,
+            full_name=payload.full_name,
+            course=payload.course.strip() if payload.course else None,
+            school=payload.school.strip() if payload.school else None,
+            department=payload.department.strip() if payload.department else None,
+            required_hours=payload.required_hours,
+            qr_code_value=user.username,
+        )
+        db.add(student)
+
+    user.full_name = payload.full_name
+    student.full_name = payload.full_name
+    student.course = payload.course.strip() if payload.course else None
+    student.school = payload.school.strip() if payload.school else None
+    student.department = payload.department.strip() if payload.department else None
+    student.required_hours = payload.required_hours
+    db.commit()
+    db.refresh(student)
+    return student
 
 
 # =========================================================
@@ -684,3 +739,43 @@ def update_journal(
     db.commit()
     db.refresh(entry)
     return entry
+
+
+# =========================================================
+# Shared Chatbox
+# =========================================================
+
+@app.get("/api/messages", response_model=List[ChatMessageResponse])
+def list_messages(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    messages = (
+        db.query(ChatMessage)
+        .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+        .limit(500)
+        .all()
+    )
+    return list(reversed(messages))
+
+
+@app.post(
+    "/api/messages",
+    response_model=ChatMessageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_message(
+    payload: ChatMessageCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    message = ChatMessage(
+        sender_username=current_user.username,
+        sender_name=current_user.full_name,
+        sender_role=payload.sender_role,
+        content=payload.content,
+    )
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+    return message

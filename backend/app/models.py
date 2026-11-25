@@ -90,3 +90,16 @@ class JournalEntry(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class ChatMessage(Base):
+    """Persisted message posted in the shared OJT chatbox."""
+
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sender_username = Column(String(64), index=True, nullable=False)
+    sender_name = Column(String(150), nullable=False)
+    sender_role = Column(String(32), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

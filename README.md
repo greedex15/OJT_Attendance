@@ -103,6 +103,7 @@ Open `http://localhost:3000`. Vite proxies `/api/*` requests to the backend on p
 | `GET` | `/api/auth/me` | Bearer | Get current authenticated user profile |
 | `GET` | `/api/users` | Admin | List all registered user & admin accounts |
 | `POST` | `/api/users` | Admin | Create a new user/trainee or admin account |
+| `PUT` | `/api/users/{id}/profile` | Admin | Update trainee profile details without changing username or attendance records |
 | `GET` | `/api/students` | Bearer | List trainees (Admin: all; User: own profile only) |
 | `POST` | `/api/students` | Admin | Register a new OJT trainee |
 | `GET` | `/api/students/lookup?code=...` | User | Lookup own trainee profile from QR code and check active shift |
@@ -113,6 +114,8 @@ Open `http://localhost:3000`. Vite proxies `/api/*` requests to the backend on p
 | `GET` | `/api/journals` | Bearer | List journals (User: own entries; Admin: read-only all entries) |
 | `POST` | `/api/journals` | User | Create a journal entry with daily activity and achievements |
 | `PUT` | `/api/journals/{id}` | User | Edit the user's own journal entry |
+| `GET` | `/api/messages` | Bearer | List the latest 500 shared chat messages |
+| `POST` | `/api/messages` | Bearer | Post a message as the authenticated user with a Coordinator, Supervisor, or Adviser label |
 
 ### Default Login Accounts
 On first startup when `users` is empty, default accounts are seeded:

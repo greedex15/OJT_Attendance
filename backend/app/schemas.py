@@ -1,6 +1,6 @@
 from datetime import date as dt_date
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
@@ -105,6 +105,22 @@ class AdminCreateUserRequest(BaseModel):
         cleaned = v.strip().lower()
         if cleaned not in {"user", "admin"}:
             raise ValueError("Role must be either 'user' or 'admin'.")
+        return cleaned
+
+
+class TraineeProfileUpdate(BaseModel):
+    full_name: str = Field(..., min_length=2, max_length=150)
+    course: Optional[str] = Field(default=None, max_length=150)
+    school: Optional[str] = Field(default=None, max_length=180)
+    department: Optional[str] = Field(default=None, max_length=150)
+    required_hours: int = Field(default=486, ge=1, le=5000)
+
+    @field_validator("full_name")
+    @classmethod
+    def strip_profile_name(cls, value: str) -> str:
+        cleaned = value.strip()
+        if len(cleaned) < 2:
+            raise ValueError("Full name must be at least 2 characters.")
         return cleaned
 
 
@@ -264,4 +280,32 @@ class JournalEntryResponse(BaseModel):
 
     @field_serializer("created_at", "updated_at", when_used="json")
     def serialize_timestamps(self, value: datetime) -> Optional[str]:
+        return _utc_isoformat(value)
+
+
+class ChatMessageCreate(BaseModel):
+    sender_role: Literal["Coordinator", "Supervisor", "Adviser"]
+    content: str = Field(..., min_length=1, max_length=4000)
+
+    @field_validator("content")
+    @classmethod
+    def strip_content(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Message cannot be blank.")
+        return cleaned
+
+
+class ChatMessageResponse(BaseModel):
+    id: int
+    sender_username: str
+    sender_name: str
+    sender_role: str
+    content: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("created_at", when_used="json")
+    def serialize_created_at(self, value: datetime) -> Optional[str]:
         return _utc_isoformat(value)
