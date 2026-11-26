@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import date as dt_date
@@ -8,6 +9,7 @@ from typing import List, Optional
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, inspect, or_, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .auth import (
@@ -83,6 +85,7 @@ DEFAULT_SEED_STUDENTS = [
 PHILIPPINE_TIMEZONE = timezone(timedelta(hours=8), "PHT")
 MONITOR_ROLES = {"admin", "adviser"}
 CHAT_ROLES = {"admin", "coordinator", "supervisor", "adviser"}
+logger = logging.getLogger(__name__)
 
 
 def seed_initial_users(db: Session) -> None:
@@ -262,16 +265,44 @@ def health_check(db: Session = Depends(get_db)):
 # =========================================================
 @app.post("/api/auth/login", response_model=AuthTokenResponse)
 def login(payload: UserLoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == payload.username).first()
-    if not user or not verify_password(payload.password, user.password_hash):
+    try:
+        user = db.query(User).filter(User.username == payload.username).first()
+    except SQLAlchemyError as error:
+        logger.exception("Database error while looking up an account for login")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Sign-in is temporarily unavailable. Please try again.",
+        ) from error
+
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid School ID or LRN.",
         )
-    if not user.is_active:
+    if user.is_active is False:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This account is inactive.",
+        )
+    if (
+        user.id is None
+        or user.is_active is None
+        or not isinstance(user.username, str)
+        or not user.username.strip()
+        or not isinstance(user.full_name, str)
+        or not user.full_name.strip()
+        or not isinstance(user.role, str)
+        or user.created_at is None
+    ):
+        logger.warning("Incomplete account record cannot be used for login")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account profile is incomplete. Contact an administrator.",
+        )
+    if not verify_password(payload.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid School ID or LRN.",
         )
 
     token = create_access_token(user)

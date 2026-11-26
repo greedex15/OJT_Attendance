@@ -35,6 +35,8 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, stored_hash: str) -> bool:
     """Verify a plaintext password against a stored PBKDF2-HMAC-SHA256 hash."""
+    if not isinstance(password, str) or not isinstance(stored_hash, str):
+        return False
     try:
         algorithm, salt, expected_digest = stored_hash.split("$", 2)
         if algorithm != "pbkdf2_sha256":

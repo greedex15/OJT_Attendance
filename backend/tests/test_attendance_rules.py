@@ -7,10 +7,11 @@ from unittest.mock import patch
 from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy import create_engine, inspect
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.auth import require_chat_user, require_student_user
-from app.main import app, migrate_added_columns, update_my_profile
+from app.auth import hash_password, require_chat_user, require_student_user, verify_password
+from app.main import app, login, migrate_added_columns, update_my_profile
 from app.main import (
     admin_update_trainee_profile,
     compute_duration_minutes,
@@ -33,6 +34,7 @@ from app.schemas import (
     ClockInRequest,
     MyProfileUpdate,
     TraineeProfileUpdate,
+    UserLoginRequest,
 )
 
 
@@ -74,6 +76,105 @@ class AttendanceRulesTests(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             ClockInRequest.model_validate({**base, "client_time": "2026-01-02T06:00:00"})
+
+    def test_default_trainee_and_admin_accounts_can_sign_in_after_legacy_schema_migration(self):
+        engine = create_engine("sqlite://")
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "CREATE TABLE users ("
+                "id INTEGER PRIMARY KEY, username VARCHAR(64) NOT NULL UNIQUE, "
+                "full_name VARCHAR(150) NOT NULL, role VARCHAR(32) NOT NULL, "
+                "password_hash VARCHAR(255) NOT NULL, is_active BOOLEAN NOT NULL, "
+                "created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+            )
+            for table in ("students", "attendance_records", "chat_messages"):
+                connection.exec_driver_sql(f"CREATE TABLE {table} (id INTEGER PRIMARY KEY)")
+
+        with patch("app.main.engine", engine):
+            migrate_added_columns()
+
+        with Session(engine) as db:
+            accounts = (
+                ("23-0679", "OJT Trainee", "user", "103013100015"),
+                ("12-3456", "OJT Administrator", "admin", "123456789012"),
+            )
+            for username, full_name, role, password in accounts:
+                db.add(
+                    User(
+                        username=username,
+                        full_name=full_name,
+                        role=role,
+                        password_hash=hash_password(password),
+                        is_active=True,
+                    )
+                )
+            db.commit()
+
+            for username, _, expected_role, password in accounts:
+                with self.subTest(username=username):
+                    response = login(UserLoginRequest(username=username.upper(), password=password), db)
+                    self.assertEqual(response.user.username, username)
+                    self.assertEqual(response.user.role, expected_role)
+                    self.assertTrue(response.access_token)
+
+            with self.assertRaises(HTTPException) as error:
+                login(UserLoginRequest(username="23-0679", password="wrong-password"), db)
+            self.assertEqual(error.exception.status_code, 401)
+
+        migrated_users = {column["name"] for column in inspect(engine).get_columns("users")}
+        self.assertIn("profile_image", migrated_users)
+        engine.dispose()
+
+    def test_malformed_stored_password_hash_is_treated_as_invalid_credentials(self):
+        self.assertFalse(verify_password("password", None))
+        engine = create_engine("sqlite://")
+        User.__table__.create(engine)
+        with Session(engine) as db:
+            db.add(
+                User(
+                    username="trainee-1",
+                    full_name="Trainee",
+                    role="user",
+                    password_hash="malformed",
+                    is_active=True,
+                )
+            )
+            db.commit()
+            with self.assertRaises(HTTPException) as error:
+                login(UserLoginRequest(username="trainee-1", password="password"), db)
+            self.assertEqual(error.exception.status_code, 401)
+        engine.dispose()
+
+    def test_incomplete_user_profile_returns_bad_request_instead_of_response_validation_error(self):
+        account = SimpleNamespace(
+            id=1,
+            username="trainee-1",
+            full_name=None,
+            role="user",
+            is_active=True,
+            created_at=datetime(2026, 1, 1),
+            password_hash="malformed",
+        )
+        query = SimpleNamespace(filter=lambda _condition: SimpleNamespace(first=lambda: account))
+        db = SimpleNamespace(query=lambda _model: query)
+
+        with self.assertRaises(HTTPException) as error:
+            login(UserLoginRequest(username="trainee-1", password="password"), db)
+        self.assertEqual(error.exception.status_code, 400)
+
+    def test_login_database_errors_are_logged_and_return_service_unavailable(self):
+        failure = OperationalError("SELECT ...", {}, Exception("no such column: profile_image"))
+
+        def fail_query(_model):
+            raise failure
+
+        db = SimpleNamespace(query=fail_query)
+
+        with self.assertLogs("app.main", level="ERROR"):
+            with self.assertRaises(HTTPException) as error:
+                login(UserLoginRequest(username="trainee-1", password="password"), db)
+        self.assertEqual(error.exception.status_code, 503)
+        self.assertIn("temporarily unavailable", error.exception.detail)
 
     def test_staff_roles_trainee_fields_and_late_reasons_are_validated(self):
         account = AdminCreateUserRequest(
