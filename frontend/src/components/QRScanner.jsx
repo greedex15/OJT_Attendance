@@ -1,8 +1,29 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
-import { Camera, CameraOff, QrCode, RefreshCw, Search, UserCheck } from "lucide-react";
+import { Camera, CameraOff, ImageUp, QrCode, RefreshCw, Search, UserCheck } from "lucide-react";
 
 const READER_ELEMENT_ID = "ojt-qr-reader";
+const SECURE_CONTEXT_MESSAGE =
+  "Live camera scanning requires HTTPS on remote hosts (or http://localhost). Upload a QR image or enter the ID/payload below.";
+
+function errorMessage(error) {
+  return error?.message || String(error || "Unknown camera error");
+}
+
+async function cleanupScanner(scanner) {
+  let cleanupError = null;
+  try {
+    if (scanner.isScanning) await scanner.stop();
+  } catch (error) {
+    cleanupError = error;
+  }
+  try {
+    scanner.clear();
+  } catch (error) {
+    cleanupError ||= error;
+  }
+  return cleanupError;
+}
 
 export default function QRScanner({
   onLookupStudent,
@@ -11,60 +32,94 @@ export default function QRScanner({
   isBusy = false,
 }) {
   const scannerRef = useRef(null);
+  const mountedRef = useRef(false);
   const lastScanRef = useRef({ code: "", time: 0 });
+  const isSecureContext = typeof window !== "undefined" && window.isSecureContext;
+  const supportsCamera =
+    typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
+  const canUseCamera = isSecureContext && supportsCamera;
 
   const [cameras, setCameras] = useState([]);
   const [selectedCameraId, setSelectedCameraId] = useState("");
+  const [isStarting, setIsStarting] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [isScanningImage, setIsScanningImage] = useState(false);
   const [cameraError, setCameraError] = useState("");
+  const [imageError, setImageError] = useState("");
   const [manualCode, setManualCode] = useState("");
 
   useEffect(() => {
-    let mounted = true;
-    Html5Qrcode.getCameras()
-      .then((devices) => {
-        if (!mounted) return;
-        setCameras(devices || []);
-        if (devices && devices.length > 0) {
-          const backCamera = devices.find((d) =>
-            /back|rear|environment/i.test(d.label || "")
-          );
-          setSelectedCameraId((backCamera || devices[0]).id);
-        }
-      })
-      .catch(() => {
-        // Camera list may require explicit permission first; handled on Start Camera
-      });
+    mountedRef.current = true;
+    if (!isSecureContext) {
+      setCameraError(SECURE_CONTEXT_MESSAGE);
+    } else if (!supportsCamera) {
+      setCameraError("Live camera streaming is unavailable in this browser. Upload a QR image or enter the ID/payload below.");
+    } else {
+      Promise.resolve()
+        .then(() => Html5Qrcode.getCameras())
+        .then((devices) => {
+          if (!mountedRef.current) return;
+          setCameras(devices || []);
+          if (devices?.length) {
+            const backCamera = devices.find((device) =>
+              /back|rear|environment/i.test(device.label || ""),
+            );
+            setSelectedCameraId((backCamera || devices[0]).id);
+          }
+        })
+        .catch((error) => {
+          if (mountedRef.current) {
+            setCameraError(
+              `Could not list cameras: ${errorMessage(error)}. Check browser permissions, or upload a QR image / enter the ID manually.`,
+            );
+          }
+        });
+    }
 
     return () => {
-      mounted = false;
-      stopCamera();
+      mountedRef.current = false;
+      const scanner = scannerRef.current;
+      scannerRef.current = null;
+      if (scanner) {
+        void cleanupScanner(scanner).then((error) => {
+          if (error) console.error("Could not clean up the QR camera scanner", error);
+        });
+      }
     };
-  }, []);
+  }, [isSecureContext, supportsCamera]);
 
   async function stopCamera() {
-    if (scannerRef.current) {
-      try {
-        if (scannerRef.current.isScanning) {
-          await scannerRef.current.stop();
-        }
-        await scannerRef.current.clear();
-      } catch {
-        // Ignore cleanup errors when unmounting
-      }
-      scannerRef.current = null;
+    const scanner = scannerRef.current;
+    scannerRef.current = null;
+    if (mountedRef.current) {
+      setIsScanning(false);
+      setIsStarting(false);
     }
-    setIsScanning(false);
+    if (!scanner) return;
+
+    const cleanupError = await cleanupScanner(scanner);
+    if (cleanupError && mountedRef.current) {
+      setCameraError(`The camera could not be stopped cleanly: ${errorMessage(cleanupError)}`);
+    }
   }
 
   async function startCamera() {
+    if (isStarting || isScanning || isScanningImage || isBusy) return;
+    if (!isSecureContext) {
+      setCameraError(SECURE_CONTEXT_MESSAGE);
+      return;
+    }
+    if (!supportsCamera) {
+      setCameraError("Live camera streaming is unavailable in this browser. Upload a QR image or enter the ID/payload below.");
+      return;
+    }
+
     setCameraError("");
-    if (isScanning) return;
-
+    setIsStarting(true);
+    let instance;
     try {
-      const instance = new Html5Qrcode(READER_ELEMENT_ID);
+      instance = new Html5Qrcode(READER_ELEMENT_ID);
       scannerRef.current = instance;
-
       const cameraConfig = selectedCameraId
         ? { deviceId: { exact: selectedCameraId } }
         : { facingMode: "environment" };
@@ -76,7 +131,8 @@ export default function QRScanner({
           qrbox: { width: 230, height: 230 },
           aspectRatio: 1.333,
         },
-        async (decodedText) => {
+        (decodedText) => {
+          if (!mountedRef.current) return;
           const now = Date.now();
           if (
             decodedText === lastScanRef.current.code &&
@@ -85,27 +141,77 @@ export default function QRScanner({
             return;
           }
           lastScanRef.current = { code: decodedText, time: now };
-          await stopCamera();
-          onLookupStudent(decodedText);
+          void stopCamera()
+            .then(() => onLookupStudent(decodedText))
+            .catch((error) => {
+              if (mountedRef.current) {
+                setCameraError(`QR was read, but lookup failed: ${errorMessage(error)}`);
+              }
+            });
         },
-        () => {
-          // Ignore per-frame decode misses
-        }
+        () => {},
       );
 
-      setIsScanning(true);
-    } catch (err) {
-      setIsScanning(false);
-      scannerRef.current = null;
-      const msg = err?.message || String(err || "Unable to access camera.");
-      setCameraError(
-        `Camera unavailable (${msg}). Ensure camera permissions are granted or use HTTPS on remote hosts.`
-      );
+      if (mountedRef.current && scannerRef.current === instance) {
+        setIsScanning(true);
+      } else {
+        const cleanupError = await cleanupScanner(instance);
+        if (cleanupError) console.error("Could not clean up a QR scanner started during unmount", cleanupError);
+      }
+    } catch (error) {
+      if (instance) {
+        const cleanupError = await cleanupScanner(instance);
+        if (cleanupError) console.error("Could not clean up a failed QR camera start", cleanupError);
+        if (scannerRef.current === instance) scannerRef.current = null;
+      }
+      if (mountedRef.current) {
+        setIsScanning(false);
+        setCameraError(
+          `Camera could not start: ${errorMessage(error)}. Check camera permissions, or upload a QR image / enter the ID manually.`,
+        );
+      }
+    } finally {
+      if (mountedRef.current) setIsStarting(false);
     }
   }
 
-  function handleManualSubmit(e) {
-    e.preventDefault();
+  async function handleImageChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || isBusy || isStarting || isScanning || isScanningImage) return;
+
+    setImageError("");
+    setIsScanningImage(true);
+    let fileScanner;
+    try {
+      fileScanner = new Html5Qrcode(READER_ELEMENT_ID);
+      const decodedText = await fileScanner.scanFile(file, false);
+      if (mountedRef.current) {
+        setManualCode(decodedText);
+        try {
+          await onLookupStudent(decodedText);
+        } catch (error) {
+          setImageError(`QR was read, but lookup failed: ${errorMessage(error)}`);
+        }
+      }
+    } catch {
+      if (mountedRef.current) {
+        setImageError("No QR code could be read from this image. Try a clearer photo, or enter the ID/payload manually.");
+      }
+    } finally {
+      if (fileScanner) {
+        try {
+          fileScanner.clear();
+        } catch (error) {
+          console.error("Could not clear the QR image scanner", error);
+        }
+      }
+      if (mountedRef.current) setIsScanningImage(false);
+    }
+  }
+
+  function handleManualSubmit(event) {
+    event.preventDefault();
     const trimmed = manualCode.trim();
     if (!trimmed || isBusy) return;
     onLookupStudent(trimmed);
@@ -119,9 +225,7 @@ export default function QRScanner({
             <QrCode className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-slate-900">
-              QR Code Scanner
-            </h2>
+            <h2 className="text-base font-semibold text-slate-900">QR Code Scanner</h2>
             <p className="text-xs text-slate-500">
               Scan an OJT trainee QR badge to fetch details and trigger supervisor sign-off
             </p>
@@ -132,14 +236,14 @@ export default function QRScanner({
           {cameras.length > 1 && (
             <select
               value={selectedCameraId}
-              onChange={(e) => setSelectedCameraId(e.target.value)}
-              disabled={isScanning}
+              onChange={(event) => setSelectedCameraId(event.target.value)}
+              disabled={isScanning || isStarting}
               aria-label="Select camera"
               className="text-xs border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-700 disabled:opacity-50"
             >
-              {cameras.map((cam, idx) => (
-                <option key={cam.id} value={cam.id}>
-                  {cam.label || `Camera ${idx + 1}`}
+              {cameras.map((camera, index) => (
+                <option key={camera.id} value={camera.id}>
+                  {camera.label || `Camera ${index + 1}`}
                 </option>
               ))}
             </select>
@@ -149,16 +253,16 @@ export default function QRScanner({
             <button
               type="button"
               onClick={startCamera}
-              disabled={isBusy}
+              disabled={!canUseCamera || isBusy || isStarting || isScanningImage}
               className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition disabled:opacity-50"
             >
               <Camera className="w-4 h-4" />
-              Start Camera
+              {isStarting ? "Starting…" : "Start Camera"}
             </button>
           ) : (
             <button
               type="button"
-              onClick={stopCamera}
+              onClick={() => { void stopCamera(); }}
               className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium transition"
             >
               <CameraOff className="w-4 h-4" />
@@ -169,7 +273,6 @@ export default function QRScanner({
       </div>
 
       <div className="p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* Camera Viewfinder */}
         <div className="lg:col-span-6">
           <div className="relative rounded-xl border-2 border-dashed border-slate-300 bg-slate-950/95 overflow-hidden min-h-[250px] flex flex-col items-center justify-center">
             <div id={READER_ELEMENT_ID} className="w-full" />
@@ -177,23 +280,24 @@ export default function QRScanner({
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 pointer-events-none">
                 <Camera className="w-10 h-10 text-slate-400 mb-2" />
                 <p className="text-sm font-medium text-slate-200">
-                  Camera viewfinder is idle
+                  {isStarting ? "Starting camera…" : "Camera viewfinder is idle"}
                 </p>
                 <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                  Click &ldquo;Start Camera&rdquo; and point your webcam at an OJT student&rsquo;s QR code.
+                  {canUseCamera
+                    ? "Click “Start Camera” and point your webcam at an OJT student’s QR code."
+                    : "Use the photo upload or manual lookup to scan without live camera access."}
                 </p>
               </div>
             )}
           </div>
 
           {cameraError && (
-            <div className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+            <div role="status" className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
               {cameraError}
             </div>
           )}
         </div>
 
-        {/* Manual Lookup & Quick Directory */}
         <div className="lg:col-span-6 space-y-4">
           <form onSubmit={handleManualSubmit} className="space-y-2">
             <label
@@ -209,7 +313,7 @@ export default function QRScanner({
                   id="manual-qr-input"
                   type="text"
                   value={manualCode}
-                  onChange={(e) => setManualCode(e.target.value)}
+                  onChange={(event) => setManualCode(event.target.value)}
                   placeholder="Enter ID (e.g. OJT-2026-001) or scanned QR JSON..."
                   className="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
@@ -219,15 +323,31 @@ export default function QRScanner({
                 disabled={!manualCode.trim() || isBusy}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium transition disabled:opacity-50"
               >
-                {isBusy ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <UserCheck className="w-4 h-4" />
-                )}
+                {isBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
                 Verify
               </button>
             </div>
           </form>
+
+          <div className="rounded-lg border border-slate-200 bg-blue-50/50 p-3.5">
+            <label htmlFor="qr-image-input" className="flex cursor-pointer items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
+              <ImageUp className="h-4 w-4 text-blue-600" />
+              Scan QR from a photo
+            </label>
+            <input
+              id="qr-image-input"
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              disabled={isBusy || isStarting || isScanning || isScanningImage}
+              className="mt-2 block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-blue-700 hover:file:bg-blue-50 disabled:opacity-50"
+            />
+            <p className="mt-1 text-[11px] text-slate-500">
+              Upload a QR screenshot or photo; works even when live camera access is blocked.
+            </p>
+            {isScanningImage && <p role="status" className="mt-2 text-xs text-blue-700">Reading QR image…</p>}
+            {imageError && <p role="alert" className="mt-2 text-xs text-rose-700">{imageError}</p>}
+          </div>
 
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5">
             <div className="flex items-center justify-between mb-2">
@@ -239,29 +359,29 @@ export default function QRScanner({
 
             {students.length === 0 ? (
               <p className="text-xs text-slate-500">
-                Use the manual School ID input or camera scanner above to log attendance.
+                Use the manual School ID input or scanner above to log attendance.
               </p>
             ) : (
               <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
-                {students.map((s) => (
+                {students.map((student) => (
                   <div
-                    key={s.id}
+                    key={student.id}
                     className="inline-flex items-stretch rounded-lg bg-white border border-slate-200 overflow-hidden"
                   >
                     <button
                       type="button"
                       disabled={isBusy}
-                      onClick={() => onLookupStudent(s.student_id)}
+                      onClick={() => onLookupStudent(student.student_id)}
                       title="Click to Clock In / Clock Out"
                       className="text-left px-2.5 py-1.5 hover:bg-blue-50/60 transition text-xs disabled:opacity-50"
                     >
-                      <div className="font-semibold text-slate-800">{s.full_name}</div>
-                      <div className="font-mono text-[11px] text-slate-500">{s.student_id}</div>
+                      <div className="font-semibold text-slate-800">{student.full_name}</div>
+                      <div className="font-mono text-[11px] text-slate-500">{student.student_id}</div>
                     </button>
                     <button
                       type="button"
-                      onClick={() => onShowQrBadge?.(s)}
-                      title={`Show QR Code for ${s.student_id}`}
+                      onClick={() => onShowQrBadge?.(student)}
+                      title={`Show QR Code for ${student.student_id}`}
                       className="px-2 border-l border-slate-200 bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-600 flex items-center justify-center transition"
                     >
                       <QrCode className="w-3.5 h-3.5" />
