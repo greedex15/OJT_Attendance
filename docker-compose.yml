@@ -53,6 +53,9 @@ services:
     ports:
       # Set FRONTEND_PORT=80 in .env for standard HTTP deployment
       - "${FRONTEND_PORT:-3000}:80"
+      - "3443:443"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
 
 volumes:
   postgres_data:
